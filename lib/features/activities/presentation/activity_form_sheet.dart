@@ -343,8 +343,9 @@ class _ActivityFormSheetState extends State<ActivityFormSheet> {
             ),
             const SizedBox(height: 8),
             SizedBox(
-              height: 140,
+              height: 200,
               child: GridView.builder(
+                physics: const BouncingScrollPhysics(),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 6,
                   crossAxisSpacing: 8,

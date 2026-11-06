@@ -32,17 +32,29 @@ class AppColors {
   // Curated Color Palette for Activities
   static const List<Color> activityPalette = [
     Color(0xFF10B981), // Emerald
+    Color(0xFF059669), // Deep Emerald
+    Color(0xFF14B8A6), // Teal
     Color(0xFF06B6D4), // Cyan
+    Color(0xFF0284C7), // Sky Blue
     Color(0xFF3B82F6), // Blue
+    Color(0xFF2563EB), // Royal Blue
     Color(0xFF6366F1), // Indigo
+    Color(0xFF7C3AED), // Violet
     Color(0xFF8B5CF6), // Purple
+    Color(0xFFA855F7), // Amethyst
+    Color(0xFFD946EF), // Magenta
     Color(0xFFEC4899), // Pink
     Color(0xFFF43F5E), // Rose
+    Color(0xFFE11D48), // Crimson
+    Color(0xFFEF4444), // Red
     Color(0xFFF97316), // Orange
+    Color(0xFFEA580C), // Deep Coral
     Color(0xFFF59E0B), // Amber
+    Color(0xFFEAB308), // Yellow Gold
     Color(0xFF84CC16), // Lime
-    Color(0xFF14B8A6), // Teal
+    Color(0xFF65A30D), // Olive
     Color(0xFF64748B), // Slate
+    Color(0xFF78716C), // Warm Stone
   ];
 
   static Color forCoefficient(double coefficient) {

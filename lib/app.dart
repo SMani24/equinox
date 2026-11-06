@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/services/notification_service.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'features/activities/presentation/activities_screen.dart';
 import 'features/analytics/presentation/analytics_screen.dart';
 import 'features/settings/presentation/settings_screen.dart';
 import 'features/timer/presentation/timer_screen.dart';
+import 'features/timer/providers/timer_provider.dart';
 
 class EquinoxApp extends StatelessWidget {
   const EquinoxApp({super.key});
@@ -22,15 +26,17 @@ class EquinoxApp extends StatelessWidget {
   }
 }
 
-class MainNavigationScreen extends StatefulWidget {
+class MainNavigationScreen extends ConsumerStatefulWidget {
   const MainNavigationScreen({super.key});
 
   @override
-  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
+  ConsumerState<MainNavigationScreen> createState() =>
+      _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen> {
+class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   int _currentIndex = 0;
+  StreamSubscription<String>? _notifSub;
 
   final List<Widget> _screens = const [
     TimerScreen(),
@@ -38,6 +44,30 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     ActivitiesScreen(),
     SettingsScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _notifSub = NotificationService.actionStream.stream.listen((actionId) {
+      if (actionId == 'action_pause') {
+        ref.read(timerControllerProvider).pause();
+      } else if (actionId == 'action_resume') {
+        ref.read(timerControllerProvider).resume();
+      } else if (actionId == 'action_stop' || actionId == 'open_app') {
+        if (mounted) {
+          setState(() {
+            _currentIndex = 0;
+          });
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _notifSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

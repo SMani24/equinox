@@ -10,6 +10,16 @@ import '../../settings/providers/settings_provider.dart';
 
 export '../../../data/repositories/timer_repository.dart' show TimerState;
 
+class IdleActivityNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void select(String? id) => state = id;
+}
+
+final idlePreselectedActivityIdProvider =
+    NotifierProvider<IdleActivityNotifier, String?>(IdleActivityNotifier.new);
+
 final activeTimerStreamProvider = StreamProvider<ActiveTimerData?>((ref) {
   final repo = ref.watch(timerRepositoryProvider);
   return repo.watchActiveTimer();
@@ -55,16 +65,22 @@ class TimerController {
     final notifService = ref.read(notificationServiceProvider);
     final actRepo = ref.read(activityRepositoryProvider);
 
+    final resolvedActivityId =
+        preselectedActivityId ?? ref.read(idlePreselectedActivityIdProvider);
+
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     await timerRepo.startTimer(
-      preselectedActivityId: preselectedActivityId,
+      preselectedActivityId: resolvedActivityId,
       draftNote: draftNote,
       startTimeMs: nowMs,
     );
 
+    // Clear idle selection once started
+    ref.read(idlePreselectedActivityIdProvider.notifier).select(null);
+
     String? activityName;
-    if (preselectedActivityId != null) {
-      final act = await actRepo.getActivityById(preselectedActivityId);
+    if (resolvedActivityId != null) {
+      final act = await actRepo.getActivityById(resolvedActivityId);
       activityName = act?.name;
     }
 
@@ -135,6 +151,7 @@ class TimerController {
     final timerRepo = ref.read(timerRepositoryProvider);
     final notifService = ref.read(notificationServiceProvider);
 
+    ref.read(idlePreselectedActivityIdProvider.notifier).select(null);
     await timerRepo.clearTimer();
     await notifService.cancelTimerNotification();
   }
@@ -149,6 +166,7 @@ class TimerController {
     final timerRepo = ref.read(timerRepositoryProvider);
     final notifService = ref.read(notificationServiceProvider);
 
+    ref.read(idlePreselectedActivityIdProvider.notifier).select(null);
     await entryRepo.createEntry(
       activityId: activityId,
       startTime: startTime,

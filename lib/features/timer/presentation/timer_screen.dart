@@ -20,8 +20,9 @@ class TimerScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     List<Activity> activities,
-    String? currentActivityId,
-  ) {
+    String? currentActivityId, {
+    required bool isIdle,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -45,7 +46,15 @@ class TimerScreen extends ConsumerWidget {
                   if (currentActivityId != null)
                     TextButton(
                       onPressed: () {
-                        ref.read(timerControllerProvider).updateDraft(activityId: null);
+                        if (isIdle) {
+                          ref
+                              .read(idlePreselectedActivityIdProvider.notifier)
+                              .select(null);
+                        } else {
+                          ref
+                              .read(timerControllerProvider)
+                              .updateDraft(activityId: null);
+                        }
                         Navigator.of(ctx).pop();
                       },
                       child: const Text('Clear'),
@@ -78,7 +87,15 @@ class TimerScreen extends ConsumerWidget {
                         ),
                       ),
                       onTap: () {
-                        ref.read(timerControllerProvider).updateDraft(activityId: act.id);
+                        if (isIdle) {
+                          ref
+                              .read(idlePreselectedActivityIdProvider.notifier)
+                              .select(act.id);
+                        } else {
+                          ref
+                              .read(timerControllerProvider)
+                              .updateDraft(activityId: act.id);
+                        }
                         Navigator.of(ctx).pop();
                       },
                     );
@@ -96,12 +113,16 @@ class TimerScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     TimerState timerState,
-    List<Activity> activities,
-  ) {
+    List<Activity> activities, {
+    String? preselectedActivityId,
+  }) {
     final now = DateTime.now();
     final startDt = timerState.startEpochMs > 0
         ? DateTime.fromMillisecondsSinceEpoch(timerState.startEpochMs)
         : now.subtract(Duration(seconds: timerState.elapsedSeconds));
+
+    final activityIdToUse =
+        preselectedActivityId ?? timerState.preselectedActivityId;
 
     showModalBottomSheet(
       context: context,
@@ -111,7 +132,7 @@ class TimerScreen extends ConsumerWidget {
         initialStartTime: startDt,
         initialEndTime: now,
         activities: activities,
-        initialActivityId: timerState.preselectedActivityId,
+        initialActivityId: activityIdToUse,
         initialNote: timerState.draftNote,
         onSave: ({
           required String activityId,
@@ -194,18 +215,21 @@ class TimerScreen extends ConsumerWidget {
     final activitiesAsync = ref.watch(activitiesStreamProvider);
     final activities = activitiesAsync.value ?? [];
 
+    final isIdle = !timerState.isRunning && !timerState.isPaused;
+    final isRunning = timerState.isRunning;
+    final idlePreselectedId = ref.watch(idlePreselectedActivityIdProvider);
+    final effectiveActivityId =
+        isIdle ? idlePreselectedId : timerState.preselectedActivityId;
+
     Activity? preselectedActivity;
-    if (timerState.preselectedActivityId != null) {
+    if (effectiveActivityId != null) {
       for (final a in activities) {
-        if (a.id == timerState.preselectedActivityId) {
+        if (a.id == effectiveActivityId) {
           preselectedActivity = a;
           break;
         }
       }
     }
-
-    final isIdle = !timerState.isRunning && !timerState.isPaused;
-    final isRunning = timerState.isRunning;
 
     return Scaffold(
       body: SafeArea(
@@ -261,7 +285,8 @@ class TimerScreen extends ConsumerWidget {
                         context,
                         ref,
                         activities,
-                        timerState.preselectedActivityId,
+                        effectiveActivityId,
+                        isIdle: isIdle,
                       ),
                     ),
                   ],
@@ -288,8 +313,7 @@ class TimerScreen extends ConsumerWidget {
                           ),
                           onPressed: () {
                             ref.read(timerControllerProvider).start(
-                                  preselectedActivityId:
-                                      timerState.preselectedActivityId,
+                                  preselectedActivityId: effectiveActivityId,
                                 );
                           },
                           icon: const Icon(Icons.play_arrow_rounded, size: 28),
@@ -307,11 +331,14 @@ class TimerScreen extends ConsumerWidget {
                         children: [
                           // Pause / Resume Secondary Button
                           Expanded(
-                            flex: 1,
+                            flex: 2,
                             child: SizedBox(
                               height: 56,
                               child: OutlinedButton.icon(
                                 style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
                                   side: const BorderSide(
                                     color: AppColors.border,
                                     width: 1.5,
@@ -331,13 +358,18 @@ class TimerScreen extends ConsumerWidget {
                                   isRunning
                                       ? Icons.pause_rounded
                                       : Icons.play_arrow_rounded,
+                                  size: 20,
                                   color: isRunning
                                       ? AppColors.restMild
                                       : AppColors.productive,
                                 ),
                                 label: Text(
                                   isRunning ? 'PAUSE' : 'RESUME',
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.visible,
                                   style: TextStyle(
+                                    fontSize: 13,
                                     fontWeight: FontWeight.w700,
                                     color: isRunning
                                         ? AppColors.restMild
@@ -350,29 +382,35 @@ class TimerScreen extends ConsumerWidget {
                           const SizedBox(width: 12),
                           // Stop & Log Primary Button
                           Expanded(
-                            flex: 2,
+                            flex: 3,
                             child: SizedBox(
                               height: 56,
                               child: FilledButton.icon(
                                 style: FilledButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                  ),
                                   backgroundColor: AppColors.primary,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(16),
                                   ),
+                                  elevation: 3,
                                 ),
-                                onPressed: () {
-                                  _showClassifySheet(
-                                    context,
-                                    ref,
-                                    timerState,
-                                    activities,
-                                  );
-                                },
-                                icon: const Icon(Icons.stop_rounded, size: 24),
+                                onPressed: () => _showClassifySheet(
+                                  context,
+                                  ref,
+                                  timerState,
+                                  activities,
+                                  preselectedActivityId: effectiveActivityId,
+                                ),
+                                icon: const Icon(Icons.stop_rounded, size: 22),
                                 label: const Text(
                                   'STOP & LOG',
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.visible,
                                   style: TextStyle(
-                                    fontSize: 15,
+                                    fontSize: 14,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: 0.5,
                                   ),

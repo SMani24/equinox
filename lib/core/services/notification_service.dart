@@ -1,11 +1,22 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+@pragma('vm:entry-point')
+void notificationTapBackground(NotificationResponse details) {
+  if (details.actionId != null) {
+    NotificationService.actionStream.add(details.actionId!);
+  }
+}
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal();
+
+  static final StreamController<String> actionStream =
+      StreamController<String>.broadcast();
 
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
@@ -35,8 +46,13 @@ class NotificationService {
       await _notificationsPlugin.initialize(
         settings: initSettings,
         onDidReceiveNotificationResponse: (details) {
-          // Can be used to bring app to foreground
+          if (details.actionId != null) {
+            actionStream.add(details.actionId!);
+          } else {
+            actionStream.add('open_app');
+          }
         },
+        onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
       );
 
       // Request notification permission on Android 13+
@@ -71,7 +87,23 @@ class NotificationService {
         usesChronometer: true,
         when: startEpochMs,
         showWhen: true,
-        subText: 'Equinox Timer',
+        subText: activityName != null
+            ? 'Equinox • $activityName'
+            : 'Equinox Timer',
+        actions: const [
+          AndroidNotificationAction(
+            'action_pause',
+            'Pause',
+            showsUserInterface: true,
+            cancelNotification: false,
+          ),
+          AndroidNotificationAction(
+            'action_stop',
+            'Stop & Log',
+            showsUserInterface: true,
+            cancelNotification: false,
+          ),
+        ],
       );
 
       final notificationDetails = NotificationDetails(
@@ -86,7 +118,7 @@ class NotificationService {
       await _notificationsPlugin.show(
         id: timerNotificationId,
         title: title,
-        body: 'Tap to view Equinox and balance score',
+        body: 'Tap to view Equinox or control with buttons below',
         notificationDetails: notificationDetails,
       );
     } catch (e) {
@@ -101,7 +133,7 @@ class NotificationService {
     if (!_initialized) await initialize();
 
     try {
-      const androidDetails = AndroidNotificationDetails(
+      final androidDetails = AndroidNotificationDetails(
         channelId,
         channelName,
         channelDescription: channelDescription,
@@ -111,12 +143,28 @@ class NotificationService {
         autoCancel: false,
         usesChronometer: false,
         showWhen: false,
-        subText: 'Equinox Timer (Paused)',
+        subText: activityName != null
+            ? 'Equinox (Paused) • $activityName'
+            : 'Equinox Timer (Paused)',
+        actions: const [
+          AndroidNotificationAction(
+            'action_resume',
+            'Resume',
+            showsUserInterface: true,
+            cancelNotification: false,
+          ),
+          AndroidNotificationAction(
+            'action_stop',
+            'Stop & Log',
+            showsUserInterface: true,
+            cancelNotification: false,
+          ),
+        ],
       );
 
-      final notificationDetails = const NotificationDetails(
+      final notificationDetails = NotificationDetails(
         android: androidDetails,
-        linux: LinuxNotificationDetails(),
+        linux: const LinuxNotificationDetails(),
       );
 
       final hours = elapsedSeconds ~/ 3600;
@@ -128,7 +176,9 @@ class NotificationService {
       await _notificationsPlugin.show(
         id: timerNotificationId,
         title: 'Timer Paused ($timeStr)',
-        body: activityName ?? 'Tap to resume',
+        body: activityName != null
+            ? '$activityName • Tap Resume or Stop'
+            : 'Tap Resume to continue tracking',
         notificationDetails: notificationDetails,
       );
     } catch (e) {

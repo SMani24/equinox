@@ -224,6 +224,18 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  Widget _buildLeadingIcon(IconData icon, Color color) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(icon, color: color, size: 20),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
@@ -238,14 +250,40 @@ class SettingsScreen extends ConsumerWidget {
           // Section 1: Equilibrium & Daily Goals
           _buildSectionHeader('EQUILIBRIUM & GOALS'),
           Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: AppColors.border),
+            ),
+            color: AppColors.surface,
+            elevation: 0,
             child: Column(
               children: [
                 ListTile(
-                  leading: const Icon(Icons.track_changes, color: AppColors.primaryLight),
-                  title: const Text('Daily Target Goal'),
-                  subtitle: const Text('Target net balance score for each day'),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  leading: _buildLeadingIcon(
+                      Icons.track_changes_rounded, AppColors.primaryLight),
+                  title: const Text(
+                    'Daily Target Goal',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  subtitle: const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Daily target net balance points',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
                   trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
                       color: AppColors.surfaceElevated,
                       borderRadius: BorderRadius.circular(8),
@@ -253,7 +291,11 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     child: Text(
                       ScoreCalculator.formatScore(settings.equilibriumTarget),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ),
                   onTap: () => _showTargetGoalDialog(
@@ -262,16 +304,53 @@ class SettingsScreen extends ConsumerWidget {
                     settings.equilibriumTarget,
                   ),
                 ),
-                const Divider(),
+                Divider(
+                  height: 1,
+                  indent: 68,
+                  endIndent: 16,
+                  color: AppColors.border.withValues(alpha: 0.6),
+                ),
                 ListTile(
-                  leading: const Icon(Icons.nightlight_round, color: AppColors.primaryLight),
-                  title: const Text('Day Rollover Hour'),
-                  subtitle: const Text('Hour when previous day transitions to new day'),
-                  trailing: Text(
-                    settings.rolloverHour == 0
-                        ? '12:00 AM'
-                        : '${settings.rolloverHour}:00 AM',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  leading: _buildLeadingIcon(
+                      Icons.nightlight_round, AppColors.primaryLight),
+                  title: const Text(
+                    'Day Rollover Hour',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  subtitle: const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Hour when a new logical day starts',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  trailing: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceElevated,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Text(
+                      settings.rolloverHour == 0
+                          ? '12:00 AM'
+                          : '${settings.rolloverHour}:00 AM',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
                   ),
                   onTap: () => _showRolloverHourDialog(
                     context,
@@ -282,63 +361,196 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
           // Section 2: Data Management (100% Offline & Sync-Ready)
           _buildSectionHeader('DATA BACKUP & MULTI-DEVICE SYNC'),
           Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: AppColors.border),
+            ),
+            color: AppColors.surface,
+            elevation: 0,
             child: Column(
               children: [
                 ListTile(
-                  leading: const Icon(Icons.file_download_outlined, color: AppColors.productive),
-                  title: const Text('Export JSON Backup'),
-                  subtitle: const Text('Sync-ready schema with UUIDs (for Syncthing / desktop transfer)'),
-                  trailing: const Icon(Icons.chevron_right),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  leading: _buildLeadingIcon(
+                      Icons.file_download_outlined, AppColors.productive),
+                  title: const Text(
+                    'Export JSON Backup',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  subtitle: const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Sync-ready backup file with unique UUIDs',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: AppColors.textMuted,
+                    size: 20,
+                  ),
                   onTap: () => _exportJson(context, ref),
                 ),
-                const Divider(),
+                Divider(
+                  height: 1,
+                  indent: 68,
+                  endIndent: 16,
+                  color: AppColors.border.withValues(alpha: 0.6),
+                ),
                 ListTile(
-                  leading: const Icon(Icons.file_upload_outlined, color: AppColors.primaryLight),
-                  title: const Text('Import / Merge Backup (JSON)'),
-                  subtitle: const Text('Smart UUID merge or replace all local records'),
-                  trailing: const Icon(Icons.chevron_right),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  leading: _buildLeadingIcon(
+                      Icons.file_upload_outlined, AppColors.primaryLight),
+                  title: const Text(
+                    'Import JSON Backup',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  subtitle: const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Smart UUID merge or complete restore',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: AppColors.textMuted,
+                    size: 20,
+                  ),
                   onTap: () => _importJson(context, ref),
                 ),
-                const Divider(),
+                Divider(
+                  height: 1,
+                  indent: 68,
+                  endIndent: 16,
+                  color: AppColors.border.withValues(alpha: 0.6),
+                ),
                 ListTile(
-                  leading: const Icon(Icons.table_chart_outlined, color: AppColors.restWarning),
-                  title: const Text('Export CSV Spreadsheet'),
-                  subtitle: const Text('Export all historical entries for Excel / Google Sheets'),
-                  trailing: const Icon(Icons.chevron_right),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  leading: _buildLeadingIcon(
+                      Icons.table_chart_outlined, AppColors.restWarning),
+                  title: const Text(
+                    'Export CSV Spreadsheet',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  subtitle: const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Full session history for Excel / Google Sheets',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: AppColors.textMuted,
+                    size: 20,
+                  ),
                   onTap: () => _exportCsv(context, ref),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
           // Section 3: Privacy & About
           _buildSectionHeader('PRIVACY & ABOUT'),
           Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: AppColors.border),
+            ),
+            color: AppColors.surface,
+            elevation: 0,
             child: Column(
               children: [
                 ListTile(
-                  leading: const Icon(Icons.shield_outlined, color: AppColors.productive),
-                  title: const Text('100% Offline-First'),
-                  subtitle: const Text(
-                    'Zero internet permissions. All data, calculations, and heatmaps stay strictly on your local device.',
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  leading: _buildLeadingIcon(
+                      Icons.shield_outlined, AppColors.productive),
+                  title: const Text(
+                    '100% Offline-First',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  subtitle: const Padding(
+                    padding: EdgeInsets.only(top: 3),
+                    child: Text(
+                      'Zero internet permissions. All data, calculations, and heatmaps stay strictly on your local device.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                   ),
                 ),
-                const Divider(),
+                Divider(
+                  height: 1,
+                  indent: 68,
+                  endIndent: 16,
+                  color: AppColors.border.withValues(alpha: 0.6),
+                ),
                 ListTile(
-                  leading: const Icon(Icons.info_outline, color: AppColors.textSecondary),
-                  title: const Text('Equinox'),
-                  subtitle: const Text('Weighted Time Tracking & Work-Rest Equilibrium • v1.0.0'),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  leading: _buildLeadingIcon(
+                      Icons.info_outline, AppColors.textSecondary),
+                  title: const Text(
+                    'Equinox',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  subtitle: const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Weighted Time Tracking & Balance Engine • v1.0.0',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 80),
         ],
       ),
     );

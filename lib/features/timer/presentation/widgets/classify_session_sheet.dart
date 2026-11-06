@@ -96,6 +96,15 @@ class _ClassifySessionSheetState extends State<ClassifySessionSheet> {
   }
 
   Future<void> _handleSplit() async {
+    if (_durationSeconds < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Session is too short to split (minimum 2 seconds required).'),
+        ),
+      );
+      return;
+    }
+
     final result = await showDialog<SplitSessionResult>(
       context: context,
       builder: (ctx) => SplitSessionDialog(

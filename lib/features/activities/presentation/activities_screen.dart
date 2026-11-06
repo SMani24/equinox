@@ -1,3 +1,4 @@
+import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/core_providers.dart';
@@ -133,10 +134,73 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
                       ],
                     ),
                   )
-                : ListView.separated(
-                    padding: const EdgeInsets.all(16),
+                : ReorderableListView.builder(
+                    buildDefaultDragHandles: false,
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
                     itemCount: activities.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    proxyDecorator: (Widget child, int index,
+                        Animation<double> animation) {
+                      return AnimatedBuilder(
+                        animation: animation,
+                        builder: (BuildContext context, Widget? child) {
+                          final double animValue = Curves.easeInOutCubic
+                              .transform(animation.value);
+                          final double elevation =
+                              lerpDouble(0, 16, animValue)!;
+                          final double scale =
+                              lerpDouble(1.0, 1.035, animValue)!;
+                          return Transform.scale(
+                            scale: scale,
+                            child: Material(
+                              color: Colors.transparent,
+                              elevation: elevation,
+                              shadowColor:
+                                  Colors.black.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: AppColors.primaryLight
+                                        .withValues(alpha: 0.9),
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppColors.primary
+                                          .withValues(alpha: 0.35 * animValue),
+                                      blurRadius: 20,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                                child: child,
+                              ),
+                            ),
+                          );
+                        },
+                        child: child,
+                      );
+                    },
+                    onReorderItem: (int oldIndex, int newIndex) async {
+                      if (oldIndex == newIndex) return;
+
+                      final item = activities[oldIndex];
+                      final targetItem = activities[newIndex];
+
+                      final updatedFull = List<Activity>.from(allList);
+                      final fullOldIndex = updatedFull.indexOf(item);
+                      final fullTargetIndex = updatedFull.indexOf(targetItem);
+
+                      if (fullOldIndex != -1 && fullTargetIndex != -1) {
+                        updatedFull.removeAt(fullOldIndex);
+                        updatedFull.insert(fullTargetIndex, item);
+                        final ids = updatedFull.map((a) => a.id).toList();
+                        await ref
+                            .read(activityRepositoryProvider)
+                            .reorderActivities(ids);
+                      }
+                    },
                     itemBuilder: (context, index) {
                       final act = activities[index];
                       final coeffFormatted =
@@ -144,112 +208,143 @@ class _ActivitiesScreenState extends ConsumerState<ActivitiesScreen> {
                       final coeffColor =
                           AppColors.forCoefficient(act.coefficient);
 
-                      return Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap: () => _showFormSheet(activityToEdit: act),
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
+                      return ReorderableDelayedDragStartListener(
+                        key: ValueKey(act.id),
+                        index: index,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: AppColors.border),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: Color(act.colorHex).withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Icon(
-                                    AppIcons.getIconData(act.iconCode),
-                                    color: Color(act.colorHex),
-                                    size: 22,
-                                  ),
+                              onTap: () => _showFormSheet(activityToEdit: act),
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: AppColors.surface,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: AppColors.border),
                                 ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        act.name,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 15,
-                                          color: AppColors.textPrimary,
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: Color(act.colorHex)
+                                            .withValues(alpha: 0.15),
+                                        borderRadius:
+                                            BorderRadius.circular(12),
+                                      ),
+                                      child: Icon(
+                                        AppIcons.getIconData(act.iconCode),
+                                        color: Color(act.colorHex),
+                                        size: 22,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            act.name,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 15,
+                                              color: AppColors.textPrimary,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            act.category.toUpperCase(),
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: coeffColor,
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            coeffColor.withValues(alpha: 0.15),
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                        border: Border.all(
+                                          color:
+                                              coeffColor.withValues(alpha: 0.3),
                                         ),
                                       ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        act.category.toUpperCase(),
+                                      child: Text(
+                                        coeffFormatted,
                                         style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
                                           color: coeffColor,
-                                          letterSpacing: 0.5,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 13,
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: coeffColor.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: coeffColor.withValues(alpha: 0.3),
                                     ),
-                                  ),
-                                  child: Text(
-                                    coeffFormatted,
-                                    style: TextStyle(
-                                      color: coeffColor,
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 13,
+                                    const SizedBox(width: 4),
+                                    ReorderableDragStartListener(
+                                      index: index,
+                                      child: const Padding(
+                                        padding:
+                                            EdgeInsets.symmetric(horizontal: 4),
+                                        child: Icon(
+                                          Icons.drag_indicator_rounded,
+                                          color: AppColors.textMuted,
+                                          size: 20,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                PopupMenuButton<String>(
-                                  icon: const Icon(
-                                    Icons.more_vert,
-                                    color: AppColors.textMuted,
-                                    size: 20,
-                                  ),
-                                  onSelected: (val) async {
-                                    final repo = ref.read(activityRepositoryProvider);
-                                    if (val == 'edit') {
-                                      _showFormSheet(activityToEdit: act);
-                                    } else if (val == 'archive') {
-                                      await repo.setArchived(act.id, !act.isArchived);
-                                    } else if (val == 'delete') {
-                                      await repo.deleteActivity(act.id);
-                                    }
-                                  },
-                                  itemBuilder: (ctx) => [
-                                    const PopupMenuItem(
-                                      value: 'edit',
-                                      child: Text('Edit'),
-                                    ),
-                                    PopupMenuItem(
-                                      value: 'archive',
-                                      child: Text(act.isArchived ? 'Unarchive' : 'Archive'),
-                                    ),
-                                    const PopupMenuItem(
-                                      value: 'delete',
-                                      child: Text('Delete', style: TextStyle(color: AppColors.rest)),
+                                    PopupMenuButton<String>(
+                                      icon: const Icon(
+                                        Icons.more_vert,
+                                        color: AppColors.textMuted,
+                                        size: 20,
+                                      ),
+                                      onSelected: (val) async {
+                                        final repo =
+                                            ref.read(activityRepositoryProvider);
+                                        if (val == 'edit') {
+                                          _showFormSheet(activityToEdit: act);
+                                        } else if (val == 'archive') {
+                                          await repo.setArchived(
+                                              act.id, !act.isArchived);
+                                        } else if (val == 'delete') {
+                                          await repo.deleteActivity(act.id);
+                                        }
+                                      },
+                                      itemBuilder: (ctx) => [
+                                        const PopupMenuItem(
+                                          value: 'edit',
+                                          child: Text('Edit'),
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'archive',
+                                          child: Text(act.isArchived
+                                              ? 'Unarchive'
+                                              : 'Archive'),
+                                        ),
+                                        const PopupMenuItem(
+                                          value: 'delete',
+                                          child: Text('Delete',
+                                              style: TextStyle(
+                                                  color: AppColors.rest)),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),

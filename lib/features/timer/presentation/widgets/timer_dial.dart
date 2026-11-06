@@ -95,7 +95,11 @@ class _TimerDialState extends State<TimerDial>
             border: Border.all(
               color: isRunning
                   ? accentColor.withValues(alpha: 0.6)
-                  : (isPaused ? AppColors.restMild : AppColors.border),
+                  : (isPaused
+                      ? AppColors.restMild
+                      : (widget.preselectedActivity != null
+                          ? accentColor.withValues(alpha: 0.5)
+                          : AppColors.border)),
               width: 3,
             ),
             boxShadow: [
@@ -109,6 +113,12 @@ class _TimerDialState extends State<TimerDial>
                 BoxShadow(
                   color: AppColors.restMild.withValues(alpha: 0.15),
                   blurRadius: 20,
+                  spreadRadius: 2,
+                )
+              else if (widget.preselectedActivity != null)
+                BoxShadow(
+                  color: accentColor.withValues(alpha: 0.15),
+                  blurRadius: 24,
                   spreadRadius: 2,
                 ),
             ],

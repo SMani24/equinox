@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_icons.dart';
@@ -51,13 +52,21 @@ class _SplitSessionDialogState extends State<SplitSessionDialog> {
   void initState() {
     super.initState();
     _totalSeconds = widget.endTime.difference(widget.startTime).inSeconds;
-    if (_totalSeconds <= 0) _totalSeconds = 60;
-    // Default split at 50%
-    _firstSegmentSeconds = (_totalSeconds / 2).floorToDouble();
+    if (_totalSeconds < 2) _totalSeconds = 2;
+
+    final double minSplit = _totalSeconds <= 10
+        ? 1.0
+        : (_totalSeconds <= 60 ? 5.0 : 15.0);
+    final double maxSplit = (_totalSeconds - minSplit).toDouble();
+    final double effectiveMin = minSplit < maxSplit ? minSplit : 1.0;
+    final double effectiveMax = maxSplit > effectiveMin
+        ? maxSplit
+        : math.max(1.0, (_totalSeconds - 1.0).toDouble());
+
+    _firstSegmentSeconds = (_totalSeconds / 2).clamp(effectiveMin, effectiveMax);
 
     _firstActivityId = widget.initialActivityId ??
         (widget.activities.isNotEmpty ? widget.activities.first.id : '');
-    // Try to pick a different activity for the second segment
     final other = widget.activities.firstWhere(
       (a) => a.id != _firstActivityId,
       orElse: () => widget.activities.first,
@@ -98,6 +107,17 @@ class _SplitSessionDialogState extends State<SplitSessionDialog> {
 
     final splitDt = widget.startTime.add(Duration(seconds: firstSec));
 
+    final double minSplit = _totalSeconds <= 10
+        ? 1.0
+        : (_totalSeconds <= 60 ? 5.0 : 15.0);
+    final double maxSplit = (_totalSeconds - minSplit).toDouble();
+    final double minBound = minSplit < maxSplit ? minSplit : 1.0;
+    final double maxBound = maxSplit > minBound
+        ? maxSplit
+        : math.max(minBound + 1.0, (_totalSeconds - 1.0).toDouble());
+    final double clampedVal = _firstSegmentSeconds.clamp(minBound, maxBound);
+    final int divisions = math.max(1, (maxBound - minBound).round());
+
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: ConstrainedBox(
@@ -134,10 +154,10 @@ class _SplitSessionDialogState extends State<SplitSessionDialog> {
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               Slider(
-                value: _firstSegmentSeconds,
-                min: 30.0.clamp(0.0, _totalSeconds.toDouble()),
-                max: (_totalSeconds - 30.0).clamp(30.0, _totalSeconds.toDouble()),
-                divisions: mathMax(1, (_totalSeconds ~/ 60)),
+                value: clampedVal,
+                min: minBound,
+                max: maxBound,
+                divisions: divisions,
                 label: DurationFormatter.formatHumanReadable(firstSec),
                 onChanged: (val) {
                   setState(() {
