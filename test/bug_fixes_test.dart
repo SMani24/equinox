@@ -1,5 +1,4 @@
 import 'package:drift/native.dart';
-import 'package:equinox/core/utils/score_calculator.dart';
 import 'package:equinox/data/database/app_database.dart';
 import 'package:equinox/data/repositories/activity_repository.dart';
 import 'package:equinox/features/timer/providers/timer_provider.dart';

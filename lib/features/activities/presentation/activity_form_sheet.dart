@@ -76,13 +76,13 @@ class _ActivityFormSheetState extends State<ActivityFormSheet> {
 
   String _getPlainEnglishExplanation() {
     final signed = _signedCoefficient;
+    final coeffStr = _coefficient.toStringAsFixed(1);
     if (_category == 'productive') {
       final pts = ScoreCalculator.formatScore(signed * 1.0);
-      return '1 hour of this activity earns $pts balance points.';
+      return '1 hour of this activity earns $pts balance points (equals $coeffStr hours of 1.0x work).';
     } else if (_category == 'rest') {
-      final costFor30m = (0.5 * _coefficient).toStringAsFixed(2);
-      final eqHours = (_coefficient).toStringAsFixed(1);
-      return '30 minutes of this activity costs -$costFor30m balance points (equals $eqHours hours of 1.0x work).';
+      final pts = ScoreCalculator.formatScore(signed * 1.0);
+      return '1 hour of this activity costs $pts balance points (cancels 1 hour of +${coeffStr}x work, or $coeffStr hours of 1.0x work).';
     } else {
       return '0.0 balance points. Recorded for life heatmaps without shifting your work/rest equilibrium.';
     }
