@@ -117,9 +117,11 @@ class TimerScreen extends ConsumerWidget {
     String? preselectedActivityId,
   }) {
     final now = DateTime.now();
-    final startDt = timerState.startEpochMs > 0
-        ? DateTime.fromMillisecondsSinceEpoch(timerState.startEpochMs)
-        : now.subtract(Duration(seconds: timerState.elapsedSeconds));
+    // Use active elapsed time (excluding paused duration) so paused intervals are never logged
+    final effectiveDuration = timerState.elapsedSeconds > 0
+        ? Duration(seconds: timerState.elapsedSeconds)
+        : Duration.zero;
+    final startDt = now.subtract(effectiveDuration);
 
     final activityIdToUse =
         preselectedActivityId ?? timerState.preselectedActivityId;
@@ -230,6 +232,22 @@ class TimerScreen extends ConsumerWidget {
         }
       }
     }
+
+    ref.listen(stopAndLogRequestedProvider, (prev, next) {
+      if (next > 0 && !isIdle) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) {
+            _showClassifySheet(
+              context,
+              ref,
+              timerState,
+              activities,
+              preselectedActivityId: effectiveActivityId,
+            );
+          }
+        });
+      }
+    });
 
     return Scaffold(
       body: SafeArea(

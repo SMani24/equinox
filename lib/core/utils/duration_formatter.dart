@@ -34,10 +34,14 @@ class DurationFormatter {
     return '${hours.toStringAsFixed(1)}h';
   }
 
-  /// Returns time range e.g. "09:30 AM – 10:45 AM"
+  /// Returns time range e.g. "09:30 AM – 10:45 AM" or "11:30 PM – 7:00 AM (+1d)"
   static String formatTimeRange(DateTime start, DateTime end) {
     final format = DateFormat('h:mm a');
-    return '${format.format(start)} – ${format.format(end)}';
+    final startDate = DateTime(start.year, start.month, start.day);
+    final endDate = DateTime(end.year, end.month, end.day);
+    final daysDiff = endDate.difference(startDate).inDays;
+    final daySuffix = daysDiff > 0 ? ' (+$daysDiff${daysDiff == 1 ? 'd' : 'd'})' : '';
+    return '${format.format(start)} – ${format.format(end)}$daySuffix';
   }
 
   /// Returns date label e.g. "Today", "Yesterday", "Nov 6"

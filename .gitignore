@@ -48,6 +48,10 @@ app.*.map.json
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
+
+# Build distribution binaries
+*.apk
+dist/*.apk
 *.sqlite-shm
 
 # Widget Preview related

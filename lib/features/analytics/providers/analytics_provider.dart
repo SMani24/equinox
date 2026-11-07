@@ -4,6 +4,7 @@ import '../../../core/utils/date_boundary.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/repositories/time_entry_repository.dart';
 import '../../settings/providers/settings_provider.dart';
+import '../../timer/providers/timer_provider.dart';
 
 enum DateRangePreset { week, month, year, custom }
 
@@ -18,44 +19,79 @@ class AnalyticsDateRange {
     required this.end,
   });
 
-  factory AnalyticsDateRange.forPreset(DateRangePreset preset, {int rolloverHour = 0}) {
-    final now = DateTime.now();
-    final today = DateBoundary.getLogicalDate(now, rolloverHour: rolloverHour);
-    final end = DateBoundary.getDayEnd(today, rolloverHour: rolloverHour);
+  factory AnalyticsDateRange.forPresetWithLogicalToday(
+    DateRangePreset preset, {
+    required DateTime logicalToday,
+    int rolloverHour = 0,
+  }) {
+    final end = DateBoundary.getDayEnd(logicalToday, rolloverHour: rolloverHour);
 
     switch (preset) {
       case DateRangePreset.week:
-        final startDay = today.subtract(const Duration(days: 6));
+        final startDay = logicalToday.subtract(const Duration(days: 6));
         final start = DateBoundary.getDayStart(startDay, rolloverHour: rolloverHour);
         return AnalyticsDateRange(preset: preset, start: start, end: end);
       case DateRangePreset.month:
-        final startDay = today.subtract(const Duration(days: 29));
+        final startDay = logicalToday.subtract(const Duration(days: 29));
         final start = DateBoundary.getDayStart(startDay, rolloverHour: rolloverHour);
         return AnalyticsDateRange(preset: preset, start: start, end: end);
       case DateRangePreset.year:
-        final startDay = today.subtract(const Duration(days: 364));
+        final startDay = logicalToday.subtract(const Duration(days: 364));
         final start = DateBoundary.getDayStart(startDay, rolloverHour: rolloverHour);
         return AnalyticsDateRange(preset: preset, start: start, end: end);
       case DateRangePreset.custom:
-        final startDay = today.subtract(const Duration(days: 14));
+        final startDay = logicalToday.subtract(const Duration(days: 14));
         final start = DateBoundary.getDayStart(startDay, rolloverHour: rolloverHour);
         return AnalyticsDateRange(preset: preset, start: start, end: end);
     }
   }
+
+  factory AnalyticsDateRange.forPreset(DateRangePreset preset, {int rolloverHour = 0}) {
+    final now = DateTime.now();
+    final today = DateBoundary.getLogicalDate(now, rolloverHour: rolloverHour);
+    return AnalyticsDateRange.forPresetWithLogicalToday(
+      preset,
+      logicalToday: today,
+      rolloverHour: rolloverHour,
+    );
+  }
 }
 
 class AnalyticsDateRangeNotifier extends Notifier<AnalyticsDateRange> {
+  DateRangePreset _currentPreset = DateRangePreset.month;
+
   @override
   AnalyticsDateRange build() {
     final settings = ref.watch(settingsProvider);
-    return AnalyticsDateRange.forPreset(
-      DateRangePreset.month,
+    final logicalDateAsync = ref.watch(currentLogicalDateProvider);
+    final logicalToday = logicalDateAsync.value ??
+        DateBoundary.getLogicalDate(
+          DateTime.now(),
+          rolloverHour: settings.rolloverHour,
+        );
+
+    return AnalyticsDateRange.forPresetWithLogicalToday(
+      _currentPreset,
+      logicalToday: logicalToday,
       rolloverHour: settings.rolloverHour,
     );
   }
 
   void setPreset(DateRangePreset preset, {int rolloverHour = 0}) {
-    state = AnalyticsDateRange.forPreset(preset, rolloverHour: rolloverHour);
+    _currentPreset = preset;
+    final settings = ref.read(settingsProvider);
+    final logicalDateAsync = ref.read(currentLogicalDateProvider);
+    final logicalToday = logicalDateAsync.value ??
+        DateBoundary.getLogicalDate(
+          DateTime.now(),
+          rolloverHour: settings.rolloverHour,
+        );
+
+    state = AnalyticsDateRange.forPresetWithLogicalToday(
+      preset,
+      logicalToday: logicalToday,
+      rolloverHour: rolloverHour,
+    );
   }
 }
 

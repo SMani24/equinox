@@ -80,8 +80,9 @@ class NotificationService {
         channelId,
         channelName,
         channelDescription: channelDescription,
-        importance: Importance.low,
-        priority: Priority.low,
+        importance: Importance.high,
+        priority: Priority.high,
+        category: AndroidNotificationCategory.stopwatch,
         ongoing: true,
         autoCancel: false,
         usesChronometer: true,
@@ -94,7 +95,7 @@ class NotificationService {
           AndroidNotificationAction(
             'action_pause',
             'Pause',
-            showsUserInterface: true,
+            showsUserInterface: false,
             cancelNotification: false,
           ),
           AndroidNotificationAction(
@@ -137,8 +138,9 @@ class NotificationService {
         channelId,
         channelName,
         channelDescription: channelDescription,
-        importance: Importance.low,
-        priority: Priority.low,
+        importance: Importance.high,
+        priority: Priority.high,
+        category: AndroidNotificationCategory.stopwatch,
         ongoing: true,
         autoCancel: false,
         usesChronometer: false,
@@ -150,7 +152,7 @@ class NotificationService {
           AndroidNotificationAction(
             'action_resume',
             'Resume',
-            showsUserInterface: true,
+            showsUserInterface: false,
             cancelNotification: false,
           ),
           AndroidNotificationAction(

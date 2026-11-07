@@ -46,8 +46,8 @@ class TimeEntryRepository {
       ),
     ])
       ..where(
-        db.timeEntries.startTime.isBiggerOrEqualValue(startMs) &
-            db.timeEntries.startTime.isSmallerOrEqualValue(endMs),
+        db.timeEntries.startTime.isSmallerOrEqualValue(endMs) &
+            db.timeEntries.endTime.isBiggerOrEqualValue(startMs),
       )
       ..orderBy([
         OrderingTerm(
@@ -80,8 +80,8 @@ class TimeEntryRepository {
       ),
     ])
       ..where(
-        db.timeEntries.startTime.isBiggerOrEqualValue(startMs) &
-            db.timeEntries.startTime.isSmallerOrEqualValue(endMs),
+        db.timeEntries.startTime.isSmallerOrEqualValue(endMs) &
+            db.timeEntries.endTime.isBiggerOrEqualValue(startMs),
       )
       ..orderBy([
         OrderingTerm(

@@ -53,7 +53,14 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
         ref.read(timerControllerProvider).pause();
       } else if (actionId == 'action_resume') {
         ref.read(timerControllerProvider).resume();
-      } else if (actionId == 'action_stop' || actionId == 'open_app') {
+      } else if (actionId == 'action_stop') {
+        if (mounted) {
+          setState(() {
+            _currentIndex = 0;
+          });
+          ref.read(stopAndLogRequestedProvider.notifier).trigger();
+        }
+      } else if (actionId == 'open_app') {
         if (mounted) {
           setState(() {
             _currentIndex = 0;

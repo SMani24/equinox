@@ -129,7 +129,7 @@ class TodaySummaryPill extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    '$workDur Work (+$workScore)',
+                    '$workDur Work ($workScore)',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AppColors.textPrimary,
                           fontWeight: FontWeight.w600,

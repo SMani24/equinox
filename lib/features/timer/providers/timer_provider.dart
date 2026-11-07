@@ -20,6 +20,16 @@ class IdleActivityNotifier extends Notifier<String?> {
 final idlePreselectedActivityIdProvider =
     NotifierProvider<IdleActivityNotifier, String?>(IdleActivityNotifier.new);
 
+class StopAndLogNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void trigger() => state = state + 1;
+}
+
+final stopAndLogRequestedProvider =
+    NotifierProvider<StopAndLogNotifier, int>(StopAndLogNotifier.new);
+
 final activeTimerStreamProvider = StreamProvider<ActiveTimerData?>((ref) {
   final repo = ref.watch(timerRepositoryProvider);
   return repo.watchActiveTimer();
@@ -183,15 +193,44 @@ final timerControllerProvider = Provider<TimerController>((ref) {
   return TimerController(ref);
 });
 
+/// Emits the current logical date, updating whenever midnight or the rollover hour passes.
+final currentLogicalDateProvider = StreamProvider<DateTime>((ref) {
+  final settings = ref.watch(settingsProvider);
+
+  DateTime computeLogical() => DateBoundary.getLogicalDate(
+        DateTime.now(),
+        rolloverHour: settings.rolloverHour,
+      );
+
+  late StreamController<DateTime> controller;
+  Timer? timer;
+
+  controller = StreamController<DateTime>(
+    onListen: () {
+      controller.add(computeLogical());
+      timer = Timer.periodic(const Duration(seconds: 15), (_) {
+        controller.add(computeLogical());
+      });
+    },
+    onCancel: () {
+      timer?.cancel();
+    },
+  );
+
+  return controller.stream.distinct();
+});
+
 // Today's Entries Provider
-final todayEntriesStreamProvider = StreamProvider<List<TimeEntryWithActivity>>((ref) {
+final todayEntriesStreamProvider =
+    StreamProvider<List<TimeEntryWithActivity>>((ref) {
   final entryRepo = ref.watch(timeEntryRepositoryProvider);
   final settings = ref.watch(settingsProvider);
-  final now = DateTime.now();
-  final logicalToday = DateBoundary.getLogicalDate(
-    now,
-    rolloverHour: settings.rolloverHour,
-  );
+  final logicalDateAsync = ref.watch(currentLogicalDateProvider);
+  final logicalToday = logicalDateAsync.value ??
+      DateBoundary.getLogicalDate(
+        DateTime.now(),
+        rolloverHour: settings.rolloverHour,
+      );
 
   return entryRepo.watchEntriesForDay(
     logicalToday,
@@ -232,11 +271,28 @@ class TodayScoreSummary {
 final todayScoreSummaryProvider = Provider<TodayScoreSummary>((ref) {
   final entriesAsync = ref.watch(todayEntriesStreamProvider);
   final settings = ref.watch(settingsProvider);
+  final logicalDateAsync = ref.watch(currentLogicalDateProvider);
+  final logicalToday = logicalDateAsync.value ??
+      DateBoundary.getLogicalDate(
+        DateTime.now(),
+        rolloverHour: settings.rolloverHour,
+      );
   final entries = entriesAsync.value ?? [];
 
   if (entries.isEmpty) {
     return TodayScoreSummary.empty(settings.equilibriumTarget);
   }
+
+  final dayStart = DateBoundary.getDayStart(
+    logicalToday,
+    rolloverHour: settings.rolloverHour,
+  );
+  final dayEnd = DateBoundary.getDayEnd(
+    logicalToday,
+    rolloverHour: settings.rolloverHour,
+  );
+  final dayStartMs = dayStart.millisecondsSinceEpoch;
+  final dayEndMs = dayEnd.millisecondsSinceEpoch;
 
   int prodSec = 0;
   int restSec = 0;
@@ -245,16 +301,26 @@ final todayScoreSummaryProvider = Provider<TodayScoreSummary>((ref) {
 
   for (final item in entries) {
     final cat = item.activity.category;
-    final dur = item.entry.durationSeconds;
-    final score = item.entry.scoreSnapshot;
+    // Calculate overlap within today's logical boundary
+    final entryStart = item.entry.startTime;
+    final entryEnd = item.entry.endTime;
+    final effectiveStart = entryStart < dayStartMs ? dayStartMs : entryStart;
+    final effectiveEnd = entryEnd > dayEndMs ? dayEndMs : entryEnd;
+    final effectiveDur = ((effectiveEnd - effectiveStart) / 1000).round();
+    if (effectiveDur <= 0) continue;
 
-    scores.add(score);
+    final effectiveScore = ScoreCalculator.calculateScore(
+      effectiveDur,
+      item.entry.coefficientSnapshot,
+    );
+
+    scores.add(effectiveScore);
     if (cat == 'productive') {
-      prodSec += dur;
+      prodSec += effectiveDur;
     } else if (cat == 'rest') {
-      restSec += dur;
+      restSec += effectiveDur;
     } else {
-      neutralSec += dur;
+      neutralSec += effectiveDur;
     }
   }
 
