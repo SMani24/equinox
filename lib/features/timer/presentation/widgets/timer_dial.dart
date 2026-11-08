@@ -64,6 +64,9 @@ class _TimerDialState extends State<TimerDial>
     final isPaused = widget.timerState.isPaused;
     final elapsedSeconds = widget.timerState.elapsedSeconds;
     final timeStr = DurationFormatter.formatHms(elapsedSeconds);
+    final screenSize = MediaQuery.of(context).size;
+    final isLandscape = screenSize.width > screenSize.height;
+    final dialDiameter = isLandscape ? 190.0 : 250.0;
 
     Color accentColor = AppColors.primaryLight;
     if (widget.preselectedActivity != null) {
@@ -87,8 +90,8 @@ class _TimerDialState extends State<TimerDial>
           );
         },
         child: Container(
-          width: 250,
-          height: 250,
+          width: dialDiameter,
+          height: dialDiameter,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: AppColors.surface,

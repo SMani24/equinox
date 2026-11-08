@@ -141,9 +141,12 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
               return a.category == filter;
             }).toList();
 
+            final pickerSize = MediaQuery.of(ctx).size;
+            final isPickerLandscape = pickerSize.width > pickerSize.height || pickerSize.height < 520;
+
             return Container(
               constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(ctx).size.height * 0.75,
+                maxHeight: isPickerLandscape ? pickerSize.height * 0.95 : pickerSize.height * 0.75,
               ),
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Column(
@@ -352,9 +355,12 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
     final score = ScoreCalculator.calculateScore(durationSec, act.coefficient);
     final scoreColor = AppColors.forCoefficient(act.coefficient);
 
+    final size = MediaQuery.of(context).size;
+    final isLandscape = size.width > size.height || size.height < 520;
+
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.9,
+        maxHeight: isLandscape ? size.height * 0.96 : size.height * 0.90,
       ),
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,

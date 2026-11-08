@@ -29,10 +29,12 @@ class TimerScreen extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       builder: (ctx) {
+        final ctxSize = MediaQuery.of(ctx).size;
+        final isCtxLandscape = ctxSize.width > ctxSize.height || ctxSize.height < 520;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(ctx).size.height * 0.6,
+            maxHeight: isCtxLandscape ? ctxSize.height * 0.92 : ctxSize.height * 0.6,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,

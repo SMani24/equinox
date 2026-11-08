@@ -164,6 +164,8 @@ class _ActivityFormSheetState extends State<ActivityFormSheet> {
     final signedCoeff = _signedCoefficient;
     final signedFormatted = ScoreCalculator.formatCoefficient(signedCoeff);
     final explanation = _getPlainEnglishExplanation();
+    final size = MediaQuery.of(context).size;
+    final isLandscape = size.width > size.height || size.height < 520;
 
     return PopScope(
       canPop: true,
@@ -174,7 +176,7 @@ class _ActivityFormSheetState extends State<ActivityFormSheet> {
       },
       child: Container(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.9,
+          maxHeight: isLandscape ? size.height * 0.96 : size.height * 0.90,
         ),
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom + 20,
@@ -450,7 +452,7 @@ class _ActivityFormSheetState extends State<ActivityFormSheet> {
               ),
               const SizedBox(height: 8),
               SizedBox(
-                height: 200,
+                height: isLandscape ? 130 : 200,
                 child: GridView.builder(
                   physics: const BouncingScrollPhysics(),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(

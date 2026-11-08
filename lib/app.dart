@@ -78,6 +78,9 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.of(context).size.width > MediaQuery.of(context).size.height;
+
     return PopScope(
       canPop: _currentIndex == 0,
       onPopInvokedWithResult: (bool didPop, dynamic result) {
@@ -100,6 +103,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
             ),
           ),
           child: NavigationBar(
+            height: isLandscape ? 56 : null,
             selectedIndex: _currentIndex,
             onDestinationSelected: (index) {
               setState(() {

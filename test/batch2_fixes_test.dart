@@ -8,6 +8,7 @@ import 'package:equinox/data/repositories/activity_repository.dart';
 import 'package:equinox/data/repositories/time_entry_repository.dart';
 import 'package:equinox/data/repositories/timer_repository.dart';
 import 'package:equinox/features/activities/presentation/activity_form_sheet.dart';
+import 'package:equinox/features/timer/presentation/widgets/classify_session_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -279,6 +280,7 @@ void main() {
 
       expect(saveCalled, isTrue);
       expect(savedCoeff, 1.5);
+      expect(savedColor, initial.colorHex);
 
       // 2. Tap Rest (-) category button without pressing any save button
       saveCalled = false;
@@ -294,6 +296,64 @@ void main() {
       await tester.tap(find.byIcon(Icons.close));
       await tester.pumpAndSettle();
       expect(saveCalled, isTrue);
+    });
+
+    testWidgets('ClassifySessionSheet renders seamlessly in landscape without overflow', (tester) async {
+      tester.view.physicalSize = const Size(800, 360);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final testActivities = [
+        const Activity(
+          id: '1',
+          name: 'Deep Work',
+          category: 'productive',
+          coefficient: 1.5,
+          colorHex: 0xFF4CAF50,
+          iconCode: 1,
+          sortOrder: 0,
+          isArchived: false,
+          createdAt: 0,
+          updatedAt: 0,
+        ),
+        const Activity(
+          id: '2',
+          name: 'Gaming',
+          category: 'rest',
+          coefficient: -2.0,
+          colorHex: 0xFFE91E63,
+          iconCode: 2,
+          sortOrder: 1,
+          isArchived: false,
+          createdAt: 0,
+          updatedAt: 0,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ClassifySessionSheet(
+              initialStartTime: DateTime(2026, 11, 8, 19, 12),
+              initialEndTime: DateTime(2026, 11, 8, 20, 52),
+              activities: testActivities,
+              onSave: ({required activityId, required startTime, required endTime, note}) {},
+              onSplitSave: (_) {},
+              onDiscard: () {},
+            ),
+          ),
+        ),
+      );
+
+      // Verify no overflow exception occurred and widgets render properly
+      expect(find.text('What did you just do?'), findsOneWidget);
+      expect(find.text('Deep Work'), findsOneWidget);
+      expect(find.text('Gaming'), findsOneWidget);
+      expect(find.text('Split Session'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }

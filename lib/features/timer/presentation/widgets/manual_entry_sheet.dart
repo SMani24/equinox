@@ -132,10 +132,12 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
     final scoreColor = act != null
         ? AppColors.forCoefficient(act.coefficient)
         : AppColors.neutral;
+    final size = MediaQuery.of(context).size;
+    final isLandscape = size.width > size.height || size.height < 520;
 
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.9,
+        maxHeight: isLandscape ? size.height * 0.96 : size.height * 0.90,
       ),
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
