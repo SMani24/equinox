@@ -1,4 +1,5 @@
 import 'package:drift/native.dart';
+import 'package:equinox/core/theme/app_icons.dart';
 import 'package:equinox/core/utils/date_boundary.dart';
 import 'package:equinox/core/utils/duration_formatter.dart';
 import 'package:equinox/core/utils/score_calculator.dart';
@@ -6,6 +7,7 @@ import 'package:equinox/data/database/app_database.dart';
 import 'package:equinox/data/repositories/activity_repository.dart';
 import 'package:equinox/data/repositories/time_entry_repository.dart';
 import 'package:equinox/data/repositories/timer_repository.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -175,6 +177,55 @@ void main() {
       final negativeScore = (5460 / 3600.0) * wastedTime.coefficient;
       expect(negativeEntry.scoreSnapshot, closeTo(negativeScore, 0.001));
       expect(negativeEntry.scoreSnapshot, lessThan(0.0));
+    });
+
+    test('AppIcons curated list contains trash icon and 30+ expanded icons', () {
+      expect(AppIcons.curatedIcons, contains(Icons.delete));
+      expect(AppIcons.curatedIcons, contains(Icons.delete_outline));
+      expect(AppIcons.curatedIcons, contains(Icons.delete_sweep));
+      expect(AppIcons.curatedIcons, contains(Icons.recycling));
+      expect(AppIcons.curatedIcons.length, greaterThanOrEqualTo(80));
+
+      // Check getIconData lookup for trash icon
+      expect(AppIcons.getIconData(Icons.delete.codePoint), Icons.delete);
+    });
+
+    test('Activities sort by points descending, ascending and name correctly', () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final actRepo = ActivityRepository(db);
+
+      // Clear any pre-seeded default activities
+      await db.delete(db.activities).go();
+
+      await actRepo.createActivity(name: 'Study', category: 'productive', coefficient: 1.0, colorHex: 0xFF00FF00, iconCode: 1);
+      await actRepo.createActivity(name: 'Deep Work', category: 'productive', coefficient: 1.5, colorHex: 0xFF00FF00, iconCode: 2);
+      await actRepo.createActivity(name: 'Slacking', category: 'rest', coefficient: -1.5, colorHex: 0xFFFF0000, iconCode: 3);
+      await actRepo.createActivity(name: 'Rest', category: 'rest', coefficient: -1.0, colorHex: 0xFFFF0000, iconCode: 4);
+      await actRepo.createActivity(name: 'Lunch', category: 'neutral', coefficient: 0.0, colorHex: 0xFF888888, iconCode: 5);
+
+      final list = await actRepo.getActivities();
+      expect(list.length, 5);
+
+      // Sort points High to Low
+      final desc = List<Activity>.from(list)..sort((a, b) => b.coefficient.compareTo(a.coefficient));
+      expect(desc.map((a) => a.coefficient).toList(), [1.5, 1.0, 0.0, -1.0, -1.5]);
+      expect(desc.first.name, 'Deep Work');
+      expect(desc.last.name, 'Slacking');
+
+      // Sort points Low to High
+      final asc = List<Activity>.from(list)..sort((a, b) => a.coefficient.compareTo(b.coefficient));
+      expect(asc.map((a) => a.coefficient).toList(), [-1.5, -1.0, 0.0, 1.0, 1.5]);
+      expect(asc.first.name, 'Slacking');
+      expect(asc.last.name, 'Deep Work');
+
+      // Sort Name A to Z
+      final alpha = List<Activity>.from(list)..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      expect(alpha.map((a) => a.name).toList(), ['Deep Work', 'Lunch', 'Rest', 'Slacking', 'Study']);
+
+      // Persist sorted order to database via reorderActivities
+      await actRepo.reorderActivities(desc.map((a) => a.id).toList());
+      final persisted = await actRepo.getActivities();
+      expect(persisted.map((a) => a.coefficient).toList(), [1.5, 1.0, 0.0, -1.0, -1.5]);
     });
   });
 }
