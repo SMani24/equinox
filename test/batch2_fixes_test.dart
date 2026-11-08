@@ -1,6 +1,10 @@
+import 'package:drift/native.dart';
 import 'package:equinox/core/utils/date_boundary.dart';
 import 'package:equinox/core/utils/duration_formatter.dart';
 import 'package:equinox/core/utils/score_calculator.dart';
+import 'package:equinox/data/database/app_database.dart';
+import 'package:equinox/data/repositories/activity_repository.dart';
+import 'package:equinox/data/repositories/time_entry_repository.dart';
 import 'package:equinox/data/repositories/timer_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -90,6 +94,87 @@ void main() {
       expect(effectiveDurSec, 7200); // 2 hours
       final todayScore = ScoreCalculator.calculateScore(effectiveDurSec, 1.5);
       expect(todayScore, closeTo(3.0, 0.001)); // 2h * 1.5x = +3.0 pts
+    });
+
+    test('TimeEntryRepository.updateEntry changes wrongly entered activity and recalculates score', () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+
+      final repo = TimeEntryRepository(db);
+
+      final actRepo = ActivityRepository(db);
+      final standardWork = await actRepo.createActivity(
+        name: 'Standard Work / Study',
+        category: 'productive',
+        coefficient: 1.0,
+        colorHex: 0xFF3B82F6,
+        iconCode: 123,
+      );
+      final deepWork = await actRepo.createActivity(
+        name: 'Deep Work',
+        category: 'productive',
+        coefficient: 1.5,
+        colorHex: 0xFF10B981,
+        iconCode: 124,
+      );
+      final wastedTime = await actRepo.createActivity(
+        name: 'Wasted Time',
+        category: 'rest',
+        coefficient: -1.5,
+        colorHex: 0xFFEF4444,
+        iconCode: 125,
+      );
+
+      final start = DateTime(2026, 11, 8, 13, 32);
+      final end = DateTime(2026, 11, 8, 15, 3); // 1h 31m = 5460s
+
+      // 1. Initial creation with Standard Work (+1.0x)
+      final initialEntry = await repo.createEntry(
+        activityId: standardWork.id,
+        startTime: start,
+        endTime: end,
+        note: 'Studying chapter 4',
+      );
+
+      expect(initialEntry.activityId, standardWork.id);
+      expect(initialEntry.durationSeconds, 5460);
+      expect(initialEntry.coefficientSnapshot, standardWork.coefficient);
+      final initialScore = (5460 / 3600.0) * standardWork.coefficient;
+      expect(initialEntry.scoreSnapshot, closeTo(initialScore, 0.001));
+
+      // 2. User entered it wrong! Change to Deep Work (+1.5x)
+      await repo.updateEntry(
+        id: initialEntry.id,
+        activityId: deepWork.id,
+        startTime: start,
+        endTime: end,
+        note: 'Actually was deep focus coding',
+      );
+
+      final updatedEntry = await repo.getEntryById(initialEntry.id);
+      expect(updatedEntry, isNotNull);
+      expect(updatedEntry!.activityId, deepWork.id);
+      expect(updatedEntry.durationSeconds, 5460);
+      expect(updatedEntry.coefficientSnapshot, deepWork.coefficient);
+      final updatedScore = (5460 / 3600.0) * deepWork.coefficient;
+      expect(updatedEntry.scoreSnapshot, closeTo(updatedScore, 0.001));
+      expect(updatedEntry.note, 'Actually was deep focus coding');
+
+      // 3. Change to Wasted Time (-1.5x)
+      await repo.updateEntry(
+        id: initialEntry.id,
+        activityId: wastedTime.id,
+        startTime: start,
+        endTime: end,
+      );
+
+      final negativeEntry = await repo.getEntryById(initialEntry.id);
+      expect(negativeEntry, isNotNull);
+      expect(negativeEntry!.activityId, wastedTime.id);
+      expect(negativeEntry.coefficientSnapshot, wastedTime.coefficient);
+      final negativeScore = (5460 / 3600.0) * wastedTime.coefficient;
+      expect(negativeEntry.scoreSnapshot, closeTo(negativeScore, 0.001));
+      expect(negativeEntry.scoreSnapshot, lessThan(0.0));
     });
   });
 }

@@ -4,9 +4,11 @@ import '../../../core/providers/core_providers.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_icons.dart';
 import '../../../data/database/app_database.dart';
+import '../../../data/repositories/time_entry_repository.dart';
 import '../../activities/providers/activities_provider.dart';
 import '../providers/timer_provider.dart';
 import 'widgets/classify_session_sheet.dart';
+import 'widgets/edit_entry_sheet.dart';
 import 'widgets/manual_entry_sheet.dart';
 import 'widgets/split_session_dialog.dart';
 import 'widgets/timeline_entry_tile.dart';
@@ -200,6 +202,59 @@ class TimerScreen extends ConsumerWidget {
                 endTime: endTime,
                 note: note,
               );
+        },
+      ),
+    );
+  }
+
+  void _showEditEntrySheet(
+    BuildContext context,
+    WidgetRef ref,
+    TimeEntryWithActivity item,
+    List<Activity> activities,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      builder: (ctx) => EditEntrySheet(
+        item: item,
+        activities: activities,
+        onSave: ({
+          required String entryId,
+          required String activityId,
+          required DateTime startTime,
+          required DateTime endTime,
+          String? note,
+        }) async {
+          await ref.read(timeEntryRepositoryProvider).updateEntry(
+                id: entryId,
+                activityId: activityId,
+                startTime: startTime,
+                endTime: endTime,
+                note: note,
+              );
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Session updated successfully'),
+                duration: Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        },
+        onDelete: () async {
+          await ref.read(timeEntryRepositoryProvider).deleteEntry(item.entry.id);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Session deleted'),
+                duration: Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
         },
       ),
     );
@@ -523,6 +578,12 @@ class TimerScreen extends ConsumerWidget {
                     final item = todayEntries[index];
                     return TimelineEntryTile(
                       item: item,
+                      onEdit: () => _showEditEntrySheet(
+                        context,
+                        ref,
+                        item,
+                        activities,
+                      ),
                       onDelete: () {
                         ref
                             .read(timeEntryRepositoryProvider)

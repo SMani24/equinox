@@ -164,6 +164,10 @@ class TimeEntryRepository {
         .getSingle());
   }
 
+  Future<TimeEntry?> getEntryById(String id) async {
+    return (db.select(db.timeEntries)..where((t) => t.id.equals(id))).getSingleOrNull();
+  }
+
   Future<void> updateEntry({
     required String id,
     required String activityId,
