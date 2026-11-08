@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -88,9 +89,7 @@ class NotificationService {
         usesChronometer: true,
         when: startEpochMs,
         showWhen: true,
-        subText: activityName != null
-            ? 'Equinox • $activityName'
-            : 'Equinox Timer',
+        color: const Color(0xFF6366F1),
         actions: const [
           AndroidNotificationAction(
             'action_pause',
@@ -100,7 +99,7 @@ class NotificationService {
           ),
           AndroidNotificationAction(
             'action_stop',
-            'Stop & Log',
+            'Stop',
             showsUserInterface: true,
             cancelNotification: false,
           ),
@@ -113,13 +112,13 @@ class NotificationService {
       );
 
       final title = activityName != null && activityName.isNotEmpty
-          ? 'Tracking: $activityName'
-          : 'Timer Running';
+          ? activityName
+          : 'Timer';
 
       await _notificationsPlugin.show(
         id: timerNotificationId,
         title: title,
-        body: 'Tap to view Equinox or control with buttons below',
+        body: 'Running',
         notificationDetails: notificationDetails,
       );
     } catch (e) {
@@ -134,7 +133,7 @@ class NotificationService {
     if (!_initialized) await initialize();
 
     try {
-      final androidDetails = AndroidNotificationDetails(
+      const androidDetails = AndroidNotificationDetails(
         channelId,
         channelName,
         channelDescription: channelDescription,
@@ -145,10 +144,8 @@ class NotificationService {
         autoCancel: false,
         usesChronometer: false,
         showWhen: false,
-        subText: activityName != null
-            ? 'Equinox (Paused) • $activityName'
-            : 'Equinox Timer (Paused)',
-        actions: const [
+        color: Color(0xFF6366F1),
+        actions: [
           AndroidNotificationAction(
             'action_resume',
             'Resume',
@@ -157,30 +154,33 @@ class NotificationService {
           ),
           AndroidNotificationAction(
             'action_stop',
-            'Stop & Log',
+            'Stop',
             showsUserInterface: true,
             cancelNotification: false,
           ),
         ],
       );
 
-      final notificationDetails = NotificationDetails(
+      final notificationDetails = const NotificationDetails(
         android: androidDetails,
-        linux: const LinuxNotificationDetails(),
+        linux: LinuxNotificationDetails(),
       );
 
       final hours = elapsedSeconds ~/ 3600;
       final minutes = (elapsedSeconds % 3600) ~/ 60;
       final seconds = elapsedSeconds % 60;
-      final timeStr =
-          '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+      final timeStr = hours > 0
+          ? '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}'
+          : '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+
+      final title = activityName != null && activityName.isNotEmpty
+          ? activityName
+          : 'Timer';
 
       await _notificationsPlugin.show(
         id: timerNotificationId,
-        title: 'Timer Paused ($timeStr)',
-        body: activityName != null
-            ? '$activityName • Tap Resume or Stop'
-            : 'Tap Resume to continue tracking',
+        title: title,
+        body: 'Paused ($timeStr)',
         notificationDetails: notificationDetails,
       );
     } catch (e) {

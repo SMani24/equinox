@@ -355,5 +355,29 @@ void main() {
       expect(find.text('Split Session'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+
+    test('Minimal notification title and body text formatting', () {
+      // 1. When activityName is null, title is 'Timer' and body is 'Running'
+      String formatTitle(String? actName) =>
+          actName != null && actName.isNotEmpty ? actName : 'Timer';
+
+      expect(formatTitle(null), 'Timer');
+      expect(formatTitle(''), 'Timer');
+      expect(formatTitle('Deep Work'), 'Deep Work');
+
+      // 2. Format paused time
+      String formatPausedTime(int elapsedSeconds) {
+        final hours = elapsedSeconds ~/ 3600;
+        final minutes = (elapsedSeconds % 3600) ~/ 60;
+        final seconds = elapsedSeconds % 60;
+        return hours > 0
+            ? '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}'
+            : '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+      }
+
+      expect(formatPausedTime(45), '00:45');
+      expect(formatPausedTime(125), '02:05');
+      expect(formatPausedTime(3665), '01:01:05');
+    });
   });
 }

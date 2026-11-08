@@ -151,10 +151,36 @@ class TimerController {
 
   Future<void> updateDraft({String? activityId, String? note}) async {
     final timerRepo = ref.read(timerRepositoryProvider);
+    final actRepo = ref.read(activityRepositoryProvider);
+    final notifService = ref.read(notificationServiceProvider);
+
     await timerRepo.updateDraft(
       preselectedActivityId: activityId,
       draftNote: note,
     );
+
+    final active = await timerRepo.getActiveTimer();
+    if (active != null) {
+      String? actName;
+      if (activityId != null) {
+        final act = await actRepo.getActivityById(activityId);
+        actName = act?.name;
+      }
+      if (active.pausedAt == null) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final effectiveStart = now - active.accumulatedPausedMs;
+        await notifService.showRunningTimer(
+          startEpochMs: effectiveStart,
+          activityName: actName,
+        );
+      } else {
+        final state = TimerState.fromDb(active);
+        await notifService.showPausedTimer(
+          elapsedSeconds: state.elapsedSeconds,
+          activityName: actName,
+        );
+      }
+    }
   }
 
   Future<void> discard() async {
