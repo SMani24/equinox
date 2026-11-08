@@ -135,46 +135,119 @@ class SettingsScreen extends ConsumerWidget {
 
   void _showTargetGoalDialog(BuildContext context, WidgetRef ref, double current) {
     final controller = TextEditingController(text: current.toStringAsFixed(1));
+    double selectedVal = current;
+    final presets = [0.0, 1.0, 2.0, 3.0, 5.0];
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Daily Equilibrium Target'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Set your ideal daily net balance score. 0.0 means pure balance between work and rest. Positive values target a work surplus.',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-                signed: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Target Net Points',
-                hintText: 'e.g. 0.0 or 2.0',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final val = double.tryParse(controller.text) ?? 0.0;
-              ref.read(settingsProvider.notifier).setEquilibriumTarget(val);
-              Navigator.of(ctx).pop();
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          void saveTarget(double val) {
+            setDialogState(() {
+              selectedVal = val;
+              controller.text = val.toStringAsFixed(1);
+            });
+            ref.read(settingsProvider.notifier).setEquilibriumTarget(val);
+          }
+
+          return PopScope(
+            canPop: true,
+            onPopInvokedWithResult: (didPop, _) {
+              if (didPop) {
+                final val = double.tryParse(controller.text);
+                if (val != null) {
+                  ref.read(settingsProvider.notifier).setEquilibriumTarget(val);
+                }
+              }
             },
-            child: const Text('Save Target'),
-          ),
-        ],
+            child: AlertDialog(
+              title: Row(
+                children: [
+                  const Text('Daily Equilibrium Target'),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.productive.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle_rounded, size: 12, color: AppColors.productive),
+                        SizedBox(width: 4),
+                        Text(
+                          'Auto-saved',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.productive,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Set your ideal daily net balance score. 0.0 means pure balance between work and rest. Positive values target a work surplus.',
+                    style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 8,
+                    children: presets.map((p) {
+                      final isSelected = (selectedVal - p).abs() < 0.05;
+                      final label = p == 0.0 ? '0.0 (Balanced)' : '+${p.toStringAsFixed(1)}';
+                      return ChoiceChip(
+                        label: Text(label),
+                        selected: isSelected,
+                        onSelected: (_) => saveTarget(p),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                      signed: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Custom Target Net Points',
+                      hintText: 'e.g. 0.0 or 2.0',
+                    ),
+                    onChanged: (text) {
+                      final val = double.tryParse(text);
+                      if (val != null) {
+                        setDialogState(() {
+                          selectedVal = val;
+                        });
+                        ref.read(settingsProvider.notifier).setEquilibriumTarget(val);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                FilledButton(
+                  onPressed: () {
+                    final val = double.tryParse(controller.text);
+                    if (val != null) {
+                      ref.read(settingsProvider.notifier).setEquilibriumTarget(val);
+                    }
+                    Navigator.of(ctx).pop();
+                  },
+                  child: const Text('Done'),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

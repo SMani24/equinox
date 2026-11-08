@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_icons.dart';
@@ -38,6 +39,10 @@ class _ActivityFormSheetState extends State<ActivityFormSheet> {
   late int _selectedIconCode;
   bool _recalculatePast = false;
 
+  bool _isSaving = false;
+  Timer? _debounceTimer;
+  Timer? _savingResetTimer;
+
   final List<double> _presets = [0.5, 1.0, 1.5, 2.0, 3.0, 5.0];
 
   @override
@@ -55,13 +60,64 @@ class _ActivityFormSheetState extends State<ActivityFormSheet> {
 
     _selectedColorHex = a?.colorHex ?? AppColors.activityPalette.first.toARGB32();
     _selectedIconCode = a?.iconCode ?? AppIcons.curatedIcons.first.codePoint;
+
+    // Listen to text changes for debounced auto-save
+    _nameController.addListener(() {
+      if (widget.activityToEdit != null) {
+        _triggerAutoSave();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
+    _savingResetTimer?.cancel();
     _nameController.dispose();
     _coefficientController.dispose();
     super.dispose();
+  }
+
+  void _triggerAutoSave({bool immediate = false}) {
+    if (widget.activityToEdit == null) return;
+    _debounceTimer?.cancel();
+    if (immediate) {
+      _performAutoSave();
+    } else {
+      _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+        _performAutoSave();
+      });
+    }
+  }
+
+  void _performAutoSave() {
+    if (widget.activityToEdit == null || !mounted) return;
+    final name = _nameController.text.trim();
+    if (name.isEmpty) return;
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    widget.onSave(
+      name: name,
+      category: _category,
+      coefficient: _signedCoefficient,
+      colorHex: _selectedColorHex,
+      iconCode: _selectedIconCode,
+      recalculatePast: _recalculatePast,
+    );
+
+    if (mounted) {
+      _savingResetTimer?.cancel();
+      _savingResetTimer = Timer(const Duration(milliseconds: 250), () {
+        if (mounted) {
+          setState(() {
+            _isSaving = false;
+          });
+        }
+      });
+    }
   }
 
   double get _signedCoefficient {
@@ -99,6 +155,7 @@ class _ActivityFormSheetState extends State<ActivityFormSheet> {
         _coefficientController.text = '1.0';
       }
     });
+    _triggerAutoSave(immediate: true);
   }
 
   @override
@@ -108,333 +165,413 @@ class _ActivityFormSheetState extends State<ActivityFormSheet> {
     final signedFormatted = ScoreCalculator.formatCoefficient(signedCoeff);
     final explanation = _getPlainEnglishExplanation();
 
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.9,
-      ),
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-        left: 20,
-        right: 20,
-        top: 12,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2),
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop && isEditing) {
+          _performAutoSave();
+        }
+      },
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.9,
+        ),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+          left: 20,
+          right: 20,
+          top: 12,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  isEditing ? 'Edit Activity' : 'New Activity',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Name Input
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Activity Name',
-                hintText: 'e.g. Deep Coding, Reading, Gaming',
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Category Segmented Control
-            Text(
-              'CATEGORY',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.0,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildCategoryButton(
-                    'productive',
-                    'Productive (+)',
-                    AppColors.productive,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildCategoryButton(
-                    'rest',
-                    'Rest (-)',
-                    AppColors.rest,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildCategoryButton(
-                    'neutral',
-                    'Neutral (0.0)',
-                    AppColors.neutral,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Coefficient Slider & Numeric Input (if not neutral)
-            if (_category != 'neutral') ...[
+              const SizedBox(height: 16),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'WEIGHT MULTIPLIER',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.0,
+                    isEditing ? 'Edit Activity' : 'New Activity',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppColors.forCoefficient(signedCoeff).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      signedFormatted,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.forCoefficient(signedCoeff),
+                  if (isEditing) ...[
+                    const SizedBox(width: 10),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _isSaving
+                            ? AppColors.primaryLight.withValues(alpha: 0.15)
+                            : AppColors.productive.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
                       ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _isSaving ? Icons.sync_rounded : Icons.check_circle_rounded,
+                            size: 13,
+                            color: _isSaving ? AppColors.primaryLight : AppColors.productive,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _isSaving ? 'Saving...' : 'Auto-saved',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: _isSaving ? AppColors.primaryLight : AppColors.productive,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      if (isEditing) {
+                        _performAutoSave();
+                      }
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Name Input
+              TextField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Activity Name',
+                  hintText: 'e.g. Deep Coding, Reading, Gaming',
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Category Segmented Control
+              Text(
+                'CATEGORY',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.0,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildCategoryButton(
+                      'productive',
+                      'Productive (+)',
+                      AppColors.productive,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildCategoryButton(
+                      'rest',
+                      'Rest (-)',
+                      AppColors.rest,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildCategoryButton(
+                      'neutral',
+                      'Neutral (0.0)',
+                      AppColors.neutral,
                     ),
                   ),
                 ],
               ),
+              const SizedBox(height: 20),
+
+              // Coefficient Slider & Numeric Input (if not neutral)
+              if (_category != 'neutral') ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'WEIGHT MULTIPLIER',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.0,
+                          ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.forCoefficient(signedCoeff).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        signedFormatted,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.forCoefficient(signedCoeff),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Quick presets
+                Wrap(
+                  spacing: 8,
+                  children: _presets.map((preset) {
+                    final isSelected = (_coefficient - preset).abs() < 0.05;
+                    return ChoiceChip(
+                      label: Text('${preset}x'),
+                      selected: isSelected,
+                      onSelected: (_) {
+                        setState(() {
+                          _coefficient = preset;
+                          _coefficientController.text = preset.toStringAsFixed(1);
+                        });
+                        _triggerAutoSave(immediate: true);
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 8),
+                Slider(
+                  value: _coefficient.clamp(0.1, 5.0),
+                  min: 0.1,
+                  max: 5.0,
+                  divisions: 49,
+                  label: '${_coefficient.toStringAsFixed(1)}x',
+                  onChanged: (val) {
+                    setState(() {
+                      _coefficient = double.parse(val.toStringAsFixed(1));
+                      _coefficientController.text = _coefficient.toStringAsFixed(1);
+                    });
+                    _triggerAutoSave();
+                  },
+                  onChangeEnd: (_) {
+                    _triggerAutoSave(immediate: true);
+                  },
+                ),
+              ],
+
+              // Plain-English explanation banner
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceElevated,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 18,
+                      color: AppColors.forCoefficient(signedCoeff),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        explanation,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          height: 1.4,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Color Palette Picker
+              Text(
+                'COLOR PALETTE',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.0,
+                    ),
+              ),
               const SizedBox(height: 8),
-              // Quick presets
               Wrap(
-                spacing: 8,
-                children: _presets.map((preset) {
-                  final isSelected = (_coefficient - preset).abs() < 0.05;
-                  return ChoiceChip(
-                    label: Text('${preset}x'),
-                    selected: isSelected,
-                    onSelected: (_) {
+                spacing: 12,
+                runSpacing: 8,
+                children: AppColors.activityPalette.map((color) {
+                  final isSelected = _selectedColorHex == color.toARGB32();
+                  return GestureDetector(
+                    onTap: () {
                       setState(() {
-                        _coefficient = preset;
-                        _coefficientController.text = preset.toStringAsFixed(1);
+                        _selectedColorHex = color.toARGB32();
                       });
+                      _triggerAutoSave(immediate: true);
                     },
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isSelected ? Colors.white : Colors.transparent,
+                          width: 2.5,
+                        ),
+                      ),
+                      child: isSelected
+                          ? const Icon(Icons.check, size: 20, color: Colors.white)
+                          : null,
+                    ),
                   );
                 }).toList(),
               ),
+              const SizedBox(height: 20),
+
+              // Icon Picker
+              Text(
+                'ICON',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.0,
+                    ),
+              ),
               const SizedBox(height: 8),
-              Slider(
-                value: _coefficient.clamp(0.1, 5.0),
-                min: 0.1,
-                max: 5.0,
-                divisions: 49,
-                label: '${_coefficient.toStringAsFixed(1)}x',
-                onChanged: (val) {
-                  setState(() {
-                    _coefficient = double.parse(val.toStringAsFixed(1));
-                    _coefficientController.text = _coefficient.toStringAsFixed(1);
-                  });
-                },
-              ),
-            ],
-
-            // Plain-English explanation banner
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceElevated,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    size: 18,
-                    color: AppColors.forCoefficient(signedCoeff),
+              SizedBox(
+                height: 200,
+                child: GridView.builder(
+                  physics: const BouncingScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 6,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      explanation,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        height: 1.4,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Color Palette Picker
-            Text(
-              'COLOR PALETTE',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.0,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: AppColors.activityPalette.map((color) {
-                final isSelected = _selectedColorHex == color.toARGB32();
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedColorHex = color.toARGB32();
-                    });
-                  },
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isSelected ? Colors.white : Colors.transparent,
-                        width: 2.5,
-                      ),
-                    ),
-                    child: isSelected
-                        ? const Icon(Icons.check, size: 20, color: Colors.white)
-                        : null,
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 20),
-
-            // Icon Picker
-            Text(
-              'ICON',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.0,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 200,
-              child: GridView.builder(
-                physics: const BouncingScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 6,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                ),
-                itemCount: AppIcons.curatedIcons.length,
-                itemBuilder: (context, index) {
-                  final icon = AppIcons.curatedIcons[index];
-                  final isSelected = _selectedIconCode == icon.codePoint;
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: () {
-                      setState(() {
-                        _selectedIconCode = icon.codePoint;
-                      });
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? Color(_selectedColorHex).withValues(alpha: 0.2)
-                            : AppColors.surfaceElevated,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
+                  itemCount: AppIcons.curatedIcons.length,
+                  itemBuilder: (context, index) {
+                    final icon = AppIcons.curatedIcons[index];
+                    final isSelected = _selectedIconCode == icon.codePoint;
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () {
+                        setState(() {
+                          _selectedIconCode = icon.codePoint;
+                        });
+                        _triggerAutoSave(immediate: true);
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? Color(_selectedColorHex).withValues(alpha: 0.2)
+                              : AppColors.surfaceElevated,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isSelected
+                                ? Color(_selectedColorHex)
+                                : AppColors.border,
+                          ),
+                        ),
+                        child: Icon(
+                          icon,
                           color: isSelected
                               ? Color(_selectedColorHex)
-                              : AppColors.border,
+                              : AppColors.textSecondary,
+                          size: 22,
                         ),
                       ),
-                      child: Icon(
-                        icon,
-                        color: isSelected
-                            ? Color(_selectedColorHex)
-                            : AppColors.textSecondary,
-                        size: 22,
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Recalculate past entries toggle (only if editing)
+              if (isEditing) ...[
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Recalculate past entries?',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: const Text(
+                    'Update historical sessions logged with this activity to use the new coefficient',
+                    style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                  ),
+                  value: _recalculatePast,
+                  onChanged: (val) {
+                    setState(() {
+                      _recalculatePast = val;
+                    });
+                    _triggerAutoSave(immediate: true);
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              // Action Button
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton(
+                  onPressed: isEditing
+                      ? () {
+                          _performAutoSave();
+                          Navigator.of(context).pop();
+                        }
+                      : _nameController.text.trim().isEmpty
+                          ? null
+                          : () {
+                              Navigator.of(context).pop();
+                              widget.onSave(
+                                name: _nameController.text.trim(),
+                                category: _category,
+                                coefficient: signedCoeff,
+                                colorHex: _selectedColorHex,
+                                iconCode: _selectedIconCode,
+                                recalculatePast: _recalculatePast,
+                              );
+                            },
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (isEditing) ...[
+                        const Icon(Icons.check_rounded, size: 20),
+                        const SizedBox(width: 8),
+                      ],
+                      Text(
+                        isEditing ? 'Done' : 'Create Activity',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                       ),
+                    ],
+                  ),
+                ),
+              ),
+              if (isEditing) ...[
+                const SizedBox(height: 8),
+                const Center(
+                  child: Text(
+                    'All adjustments are saved automatically',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textMuted,
+                      fontWeight: FontWeight.w500,
                     ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Recalculate past entries toggle (only if editing)
-            if (isEditing) ...[
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text(
-                  'Recalculate past entries?',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
                 ),
-                subtitle: const Text(
-                  'Update historical sessions logged with this activity to use the new coefficient',
-                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-                ),
-                value: _recalculatePast,
-                onChanged: (val) {
-                  setState(() {
-                    _recalculatePast = val;
-                  });
-                },
-              ),
-              const SizedBox(height: 8),
+              ],
             ],
-
-            // Submit Button
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: FilledButton(
-                onPressed: _nameController.text.trim().isEmpty
-                    ? null
-                    : () {
-                        Navigator.of(context).pop();
-                        widget.onSave(
-                          name: _nameController.text.trim(),
-                          category: _category,
-                          coefficient: signedCoeff,
-                          colorHex: _selectedColorHex,
-                          iconCode: _selectedIconCode,
-                          recalculatePast: _recalculatePast,
-                        );
-                      },
-                child: Text(
-                  isEditing ? 'Save Changes' : 'Create Activity',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

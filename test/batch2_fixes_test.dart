@@ -7,6 +7,7 @@ import 'package:equinox/data/database/app_database.dart';
 import 'package:equinox/data/repositories/activity_repository.dart';
 import 'package:equinox/data/repositories/time_entry_repository.dart';
 import 'package:equinox/data/repositories/timer_repository.dart';
+import 'package:equinox/features/activities/presentation/activity_form_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -226,6 +227,73 @@ void main() {
       await actRepo.reorderActivities(desc.map((a) => a.id).toList());
       final persisted = await actRepo.getActivities();
       expect(persisted.map((a) => a.coefficient).toList(), [1.5, 1.0, 0.0, -1.0, -1.5]);
+    });
+
+    testWidgets('ActivityFormSheet auto-saves settings immediately upon adjustment', (tester) async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final actRepo = ActivityRepository(db);
+      await db.delete(db.activities).go();
+
+      final initial = await actRepo.createActivity(
+        name: 'Productive Travel',
+        category: 'productive',
+        coefficient: 0.1,
+        colorHex: 0xFF2196F3,
+        iconCode: Icons.commute.codePoint,
+      );
+
+      bool saveCalled = false;
+      double? savedCoeff;
+      String? savedCategory;
+      int? savedColor;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ActivityFormSheet(
+              activityToEdit: initial,
+              onSave: ({
+                required String name,
+                required String category,
+                required double coefficient,
+                required int colorHex,
+                required int iconCode,
+                bool recalculatePast = false,
+              }) {
+                saveCalled = true;
+                savedCoeff = coefficient;
+                savedCategory = category;
+                savedColor = colorHex;
+              },
+            ),
+          ),
+        ),
+      );
+
+      // Verify Auto-saved badge is visible
+      expect(find.text('Auto-saved'), findsOneWidget);
+
+      // 1. Tap preset 1.5x chip without pressing any save button
+      await tester.tap(find.text('1.5x'));
+      await tester.pump();
+
+      expect(saveCalled, isTrue);
+      expect(savedCoeff, 1.5);
+
+      // 2. Tap Rest (-) category button without pressing any save button
+      saveCalled = false;
+      await tester.tap(find.text('Rest (-)'));
+      await tester.pump();
+
+      expect(saveCalled, isTrue);
+      expect(savedCategory, 'rest');
+      expect(savedCoeff, -1.5); // signed rest coefficient
+
+      // 3. Close button in header triggers auto-save confirmation
+      saveCalled = false;
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+      expect(saveCalled, isTrue);
     });
   });
 }
