@@ -9,6 +9,7 @@ import 'package:equinox/data/repositories/time_entry_repository.dart';
 import 'package:equinox/data/repositories/timer_repository.dart';
 import 'package:equinox/features/activities/presentation/activity_form_sheet.dart';
 import 'package:equinox/features/timer/presentation/widgets/classify_session_sheet.dart';
+import 'package:equinox/features/timer/presentation/widgets/manual_entry_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -378,6 +379,109 @@ void main() {
       expect(formatPausedTime(45), '00:45');
       expect(formatPausedTime(125), '02:05');
       expect(formatPausedTime(3665), '01:01:05');
+    });
+
+    test('Overnight manual entry anchors yesterday to today instead of tomorrow', () {
+      final now = DateTime(2026, 11, 12, 12, 0);
+      final today = DateTime(2026, 11, 12);
+
+      // Entering 11:00 PM -> 8:42 AM at 12:00 PM should shift startDate to Yesterday
+      final overnight = ManualEntrySheet.resolveDateAndOvernight(
+        currentDate: today,
+        startTime: const TimeOfDay(hour: 23, minute: 0),
+        endTime: const TimeOfDay(hour: 8, minute: 42),
+        currentIsNextDay: false,
+        userManuallyPickedDate: false,
+        userManuallyToggledNextDay: false,
+        now: now,
+      );
+      expect(overnight.startDate, DateTime(2026, 11, 11));
+      expect(overnight.isNextDay, isTrue);
+
+      // Switching back to same-day 8:00 AM -> 8:42 AM restores Today and clears +1d
+      final sameDay = ManualEntrySheet.resolveDateAndOvernight(
+        currentDate: overnight.startDate,
+        startTime: const TimeOfDay(hour: 8, minute: 0),
+        endTime: const TimeOfDay(hour: 8, minute: 42),
+        currentIsNextDay: overnight.isNextDay,
+        userManuallyPickedDate: false,
+        userManuallyToggledNextDay: false,
+        now: now,
+      );
+      expect(sameDay.startDate, DateTime(2026, 11, 12));
+      expect(sameDay.isNextDay, isFalse);
+
+      // Respects explicit user-picked date
+      final customDate = ManualEntrySheet.resolveDateAndOvernight(
+        currentDate: DateTime(2026, 11, 9),
+        startTime: const TimeOfDay(hour: 23, minute: 0),
+        endTime: const TimeOfDay(hour: 7, minute: 0),
+        currentIsNextDay: false,
+        userManuallyPickedDate: true,
+        userManuallyToggledNextDay: false,
+        now: now,
+      );
+      expect(customDate.startDate, DateTime(2026, 11, 9));
+      expect(customDate.isNextDay, isTrue);
+    });
+
+    test('DurationFormatter.formatTimelineTimeRange distinguishes Yesterday overnight vs (+1d)', () {
+      final today = DateTime(2026, 11, 12);
+      final yestRange = DurationFormatter.formatTimelineTimeRange(
+        DateTime(2026, 11, 11, 23, 0),
+        DateTime(2026, 11, 12, 8, 42),
+        today,
+      );
+      expect(yestRange, 'Yesterday 11:00 PM – 8:42 AM');
+
+      final sameDayRange = DurationFormatter.formatTimelineTimeRange(
+        DateTime(2026, 11, 12, 10, 9),
+        DateTime(2026, 11, 12, 11, 55),
+        today,
+      );
+      expect(sameDayRange, '10:09 AM – 11:55 AM');
+
+      final futureEndRange = DurationFormatter.formatTimelineTimeRange(
+        DateTime(2026, 11, 12, 23, 0),
+        DateTime(2026, 11, 13, 8, 42),
+        today,
+      );
+      expect(futureEndRange, '11:00 PM – 8:42 AM (+1d)');
+    });
+
+    test('Timeline orders overnight Yesterday->Today sleep below morning entries', () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      final entryRepo = TimeEntryRepository(db);
+      final acts = await (db.select(db.activities)).get();
+      final sleepAct = acts.first;
+
+      await entryRepo.createEntry(
+        activityId: sleepAct.id,
+        startTime: DateTime(2026, 11, 11, 23, 0),
+        endTime: DateTime(2026, 11, 12, 8, 42),
+        note: 'Sleep',
+      );
+      await entryRepo.createEntry(
+        activityId: sleepAct.id,
+        startTime: DateTime(2026, 11, 12, 8, 45),
+        endTime: DateTime(2026, 11, 12, 9, 39),
+        note: 'Morning 1',
+      );
+      await entryRepo.createEntry(
+        activityId: sleepAct.id,
+        startTime: DateTime(2026, 11, 12, 10, 9),
+        endTime: DateTime(2026, 11, 12, 11, 55),
+        note: 'Morning 2',
+      );
+
+      final dayEntries = await entryRepo.watchEntriesForDay(DateTime(2026, 11, 12)).first;
+      expect(dayEntries.map((e) => e.entry.note).toList(), [
+        'Morning 2',
+        'Morning 1',
+        'Sleep',
+      ]);
+
+      await db.close();
     });
   });
 }

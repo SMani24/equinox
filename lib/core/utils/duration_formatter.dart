@@ -44,7 +44,41 @@ class DurationFormatter {
     return '${format.format(start)} – ${format.format(end)}$daySuffix';
   }
 
-  /// Returns date label e.g. "Today", "Yesterday", "Nov 6"
+  /// Returns a timeline-aware time range string relative to [referenceDate] (e.g., today).
+  /// Clarifies when an overnight session started on a previous day (e.g. "Yesterday 11:00 PM – 8:42 AM")
+  /// or ends on a subsequent day ("11:00 PM – 8:42 AM (+1d)").
+  static String formatTimelineTimeRange(
+    DateTime start,
+    DateTime end,
+    DateTime referenceDate,
+  ) {
+    final format = DateFormat('h:mm a');
+    final refDay = DateTime(referenceDate.year, referenceDate.month, referenceDate.day);
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = DateTime(end.year, end.month, end.day);
+
+    final startDiff = startDay.difference(refDay).inDays;
+    String startPrefix = '';
+    if (startDiff == -1) {
+      startPrefix = 'Yesterday ';
+    } else if (startDiff < -1) {
+      startPrefix = '${DateFormat('MMM d').format(start)} ';
+    } else if (startDiff == 1) {
+      startPrefix = 'Tomorrow ';
+    } else if (startDiff > 1) {
+      startPrefix = '${DateFormat('MMM d').format(start)} ';
+    }
+
+    final endDiffFromRef = endDay.difference(refDay).inDays;
+    String endSuffix = '';
+    if (endDiffFromRef > 0) {
+      endSuffix = ' (+${endDiffFromRef}d)';
+    }
+
+    return '$startPrefix${format.format(start)} – ${format.format(end)}$endSuffix';
+  }
+
+  /// Returns date label e.g. "Today", "Yesterday", "Tomorrow", "Nov 6, 2026"
   static String formatDateLabel(DateTime date) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -53,6 +87,7 @@ class DurationFormatter {
     final diff = today.difference(target).inDays;
     if (diff == 0) return 'Today';
     if (diff == 1) return 'Yesterday';
+    if (diff == -1) return 'Tomorrow';
     return DateFormat('MMM d, yyyy').format(date);
   }
 }

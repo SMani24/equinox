@@ -54,6 +54,10 @@ class TimeEntryRepository {
           expression: db.timeEntries.startTime,
           mode: OrderingMode.desc,
         ),
+        OrderingTerm(
+          expression: db.timeEntries.endTime,
+          mode: OrderingMode.desc,
+        ),
       ]);
 
     return query.watch().map((rows) {
@@ -86,6 +90,10 @@ class TimeEntryRepository {
       ..orderBy([
         OrderingTerm(
           expression: db.timeEntries.startTime,
+          mode: OrderingMode.desc,
+        ),
+        OrderingTerm(
+          expression: db.timeEntries.endTime,
           mode: OrderingMode.desc,
         ),
       ]);

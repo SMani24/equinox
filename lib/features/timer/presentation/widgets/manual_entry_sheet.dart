@@ -4,6 +4,7 @@ import '../../../../core/theme/app_icons.dart';
 import '../../../../core/utils/duration_formatter.dart';
 import '../../../../core/utils/score_calculator.dart';
 import '../../../../data/database/app_database.dart';
+import 'future_range_warning_banner.dart';
 
 class ManualEntrySheet extends StatefulWidget {
   final List<Activity> activities;
@@ -20,6 +21,69 @@ class ManualEntrySheet extends StatefulWidget {
     required this.onSave,
   });
 
+  /// Resolves the start date and overnight flag when start/end times change.
+  /// When [userManuallyPickedDate] is false and an overnight span (`end <= start`)
+  /// would extend into tomorrow (future) while shifting back 1 day places its
+  /// end on or before [now], anchors the session to yesterday -> today instead.
+  static ({DateTime startDate, bool isNextDay}) resolveDateAndOvernight({
+    required DateTime currentDate,
+    required TimeOfDay startTime,
+    required TimeOfDay endTime,
+    required bool currentIsNextDay,
+    required bool userManuallyPickedDate,
+    required bool userManuallyToggledNextDay,
+    required DateTime now,
+  }) {
+    final startMins = startTime.hour * 60 + startTime.minute;
+    final endMins = endTime.hour * 60 + endTime.minute;
+    final spansMidnight = endMins <= startMins;
+
+    bool resolvedNextDay =
+        userManuallyToggledNextDay ? currentIsNextDay : spansMidnight;
+    DateTime resolvedDate = currentDate;
+
+    if (!userManuallyPickedDate) {
+      final today = DateTime(now.year, now.month, now.day);
+      if (spansMidnight && !userManuallyToggledNextDay) {
+        final endOnTomorrow = DateTime(
+          today.year,
+          today.month,
+          today.day,
+          endTime.hour,
+          endTime.minute,
+        ).add(const Duration(days: 1));
+        final endOnToday = DateTime(
+          today.year,
+          today.month,
+          today.day,
+          endTime.hour,
+          endTime.minute,
+        );
+        if (endOnTomorrow.isAfter(now) && !endOnToday.isAfter(now)) {
+          resolvedDate = today.subtract(const Duration(days: 1));
+          resolvedNextDay = true;
+          return (startDate: resolvedDate, isNextDay: resolvedNextDay);
+        }
+      }
+
+      final startOnToday = DateTime(
+        today.year,
+        today.month,
+        today.day,
+        startTime.hour,
+        startTime.minute,
+      );
+      if (!spansMidnight && !startOnToday.isAfter(now)) {
+        resolvedDate = today;
+        if (!userManuallyToggledNextDay) {
+          resolvedNextDay = false;
+        }
+      }
+    }
+
+    return (startDate: resolvedDate, isNextDay: resolvedNextDay);
+  }
+
   @override
   State<ManualEntrySheet> createState() => _ManualEntrySheetState();
 }
@@ -29,6 +93,8 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
   late TimeOfDay _startTime;
   late TimeOfDay _endTime;
   bool _isNextDay = false;
+  bool _userManuallyPickedDate = false;
+  bool _userManuallyToggledNextDay = false;
   String? _selectedActivityId;
   final TextEditingController _noteController = TextEditingController();
 
@@ -36,11 +102,14 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
   void initState() {
     super.initState();
     final now = DateTime.now();
-    _date = DateTime(now.year, now.month, now.day);
     // Default 1 hour prior to now
     final startDt = now.subtract(const Duration(hours: 1));
+    _date = DateTime(startDt.year, startDt.month, startDt.day);
     _startTime = TimeOfDay.fromDateTime(startDt);
     _endTime = TimeOfDay.fromDateTime(now);
+    _isNextDay = startDt.day != now.day ||
+        startDt.month != now.month ||
+        startDt.year != now.year;
 
     if (widget.activities.isNotEmpty) {
       _selectedActivityId = widget.activities.first.id;
@@ -86,15 +155,18 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
   }
 
   Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date,
+      initialDate: _date.isAfter(today) ? today : _date,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
+      lastDate: today,
     );
     if (picked != null) {
       setState(() {
         _date = picked;
+        _userManuallyPickedDate = true;
       });
     }
   }
@@ -112,12 +184,17 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
         } else {
           _endTime = picked;
         }
-        // Auto-detect overnight crossing when end is before or equal to start
-        final startMins = _startTime.hour * 60 + _startTime.minute;
-        final endMins = _endTime.hour * 60 + _endTime.minute;
-        if (endMins <= startMins) {
-          _isNextDay = true;
-        }
+        final resolved = ManualEntrySheet.resolveDateAndOvernight(
+          currentDate: _date,
+          startTime: _startTime,
+          endTime: _endTime,
+          currentIsNextDay: _isNextDay,
+          userManuallyPickedDate: _userManuallyPickedDate,
+          userManuallyToggledNextDay: _userManuallyToggledNextDay,
+          now: DateTime.now(),
+        );
+        _date = resolved.startDate;
+        _isNextDay = resolved.isNextDay;
       });
     }
   }
@@ -125,6 +202,8 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
   @override
   Widget build(BuildContext context) {
     final durationSec = _durationSeconds;
+    final startDt = _startDateTime;
+    final endDt = _endDateTime;
     final act = _selectedActivity;
     final score = act != null
         ? ScoreCalculator.calculateScore(durationSec, act.coefficient)
@@ -181,7 +260,7 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
             ),
             const SizedBox(height: 16),
 
-            // Date Selector
+            // Start Date Selector
             ListTile(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -189,7 +268,7 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
               ),
               tileColor: AppColors.surfaceElevated,
               leading: const Icon(Icons.calendar_today, size: 20),
-              title: const Text('Date'),
+              title: const Text('Start Date'),
               trailing: Text(
                 DurationFormatter.formatDateLabel(_date),
                 style: const TextStyle(fontWeight: FontWeight.w600),
@@ -211,9 +290,10 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
                     leading: const Icon(Icons.schedule, size: 20),
                     title: const Text('Start', style: TextStyle(fontSize: 12)),
                     subtitle: Text(
-                      _startTime.format(context),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      '${_startTime.format(context)}\n${DurationFormatter.formatDateLabel(startDt)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                     ),
+                    isThreeLine: true,
                     onTap: () => _pickTime(isStart: true),
                   ),
                 ),
@@ -254,9 +334,10 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
                       ],
                     ),
                     subtitle: Text(
-                      _endTime.format(context),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      '${_endTime.format(context)}\n${DurationFormatter.formatDateLabel(endDt)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                     ),
+                    isThreeLine: true,
                     onTap: () => _pickTime(isStart: false),
                   ),
                 ),
@@ -269,6 +350,7 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
               borderRadius: BorderRadius.circular(8),
               onTap: () {
                 setState(() {
+                  _userManuallyToggledNextDay = true;
                   _isNextDay = !_isNextDay;
                 });
               },
@@ -296,6 +378,17 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
                   ],
                 ),
               ),
+            ),
+
+            FutureRangeWarningBanner(
+              endDateTime: endDt,
+              endTime: _endTime,
+              onShiftBackOneDay: () {
+                setState(() {
+                  _date = _date.subtract(const Duration(days: 1));
+                  _userManuallyPickedDate = true;
+                });
+              },
             ),
             const SizedBox(height: 12),
 

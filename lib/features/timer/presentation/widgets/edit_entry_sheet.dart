@@ -5,6 +5,7 @@ import '../../../../core/utils/duration_formatter.dart';
 import '../../../../core/utils/score_calculator.dart';
 import '../../../../data/database/app_database.dart';
 import '../../../../data/repositories/time_entry_repository.dart';
+import 'future_range_warning_banner.dart';
 
 class EditEntrySheet extends StatefulWidget {
   final TimeEntryWithActivity item;
@@ -92,11 +93,13 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
   }
 
   Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date,
+      initialDate: _date.isAfter(today) ? today : _date,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
+      lastDate: today,
     );
     if (picked != null) {
       setState(() {
@@ -120,9 +123,7 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
         }
         final startMins = _startTime.hour * 60 + _startTime.minute;
         final endMins = _endTime.hour * 60 + _endTime.minute;
-        if (endMins <= startMins) {
-          _isNextDay = true;
-        }
+        _isNextDay = endMins <= startMins;
       });
     }
   }
@@ -351,6 +352,8 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
   @override
   Widget build(BuildContext context) {
     final durationSec = _durationSeconds;
+    final startDt = _startDateTime;
+    final endDt = _endDateTime;
     final act = _selectedActivity;
     final score = ScoreCalculator.calculateScore(durationSec, act.coefficient);
     final scoreColor = AppColors.forCoefficient(act.coefficient);
@@ -519,7 +522,7 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
             ),
             const SizedBox(height: 16),
 
-            // Date Selector
+            // Start Date Selector
             ListTile(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -527,7 +530,7 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
               ),
               tileColor: AppColors.surfaceElevated,
               leading: const Icon(Icons.calendar_today, size: 20),
-              title: const Text('Date'),
+              title: const Text('Start Date'),
               trailing: Text(
                 DurationFormatter.formatDateLabel(_date),
                 style: const TextStyle(fontWeight: FontWeight.w600),
@@ -549,9 +552,10 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
                     leading: const Icon(Icons.schedule, size: 20),
                     title: const Text('Start', style: TextStyle(fontSize: 12)),
                     subtitle: Text(
-                      _startTime.format(context),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      '${_startTime.format(context)}\n${DurationFormatter.formatDateLabel(startDt)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                     ),
+                    isThreeLine: true,
                     onTap: () => _pickTime(isStart: true),
                   ),
                 ),
@@ -592,9 +596,10 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
                       ],
                     ),
                     subtitle: Text(
-                      _endTime.format(context),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      '${_endTime.format(context)}\n${DurationFormatter.formatDateLabel(endDt)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                     ),
+                    isThreeLine: true,
                     onTap: () => _pickTime(isStart: false),
                   ),
                 ),
@@ -634,6 +639,16 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
                   ],
                 ),
               ),
+            ),
+
+            FutureRangeWarningBanner(
+              endDateTime: endDt,
+              endTime: _endTime,
+              onShiftBackOneDay: () {
+                setState(() {
+                  _date = _date.subtract(const Duration(days: 1));
+                });
+              },
             ),
             const SizedBox(height: 12),
 

@@ -22,9 +22,11 @@ class TimelineEntryTile extends StatelessWidget {
     final entry = item.entry;
     final activity = item.activity;
 
+    final now = DateTime.now();
     final startDt = DateTime.fromMillisecondsSinceEpoch(entry.startTime);
     final endDt = DateTime.fromMillisecondsSinceEpoch(entry.endTime);
-    final timeRange = DurationFormatter.formatTimeRange(startDt, endDt);
+    final timeRange = DurationFormatter.formatTimelineTimeRange(startDt, endDt, now);
+    final isFuture = endDt.isAfter(now.add(const Duration(minutes: 1)));
     final durStr = DurationFormatter.formatHumanReadable(entry.durationSeconds);
     final scoreStr = ScoreCalculator.formatScore(entry.scoreSnapshot);
     final scoreColor = AppColors.forCoefficient(entry.coefficientSnapshot);
@@ -125,12 +127,41 @@ class TimelineEntryTile extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          '$timeRange • $durStr',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 6,
+                          runSpacing: 2,
+                          children: [
+                            Text(
+                              '$timeRange • $durStr',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            if (isFuture)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.withValues(alpha: 0.18),
+                                  borderRadius: BorderRadius.circular(5),
+                                  border: Border.all(
+                                    color: Colors.amber.withValues(alpha: 0.5),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Future',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.amber,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                         if (entry.note != null && entry.note!.isNotEmpty) ...[
                           const SizedBox(height: 4),
