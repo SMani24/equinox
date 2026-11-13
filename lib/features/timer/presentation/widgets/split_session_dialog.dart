@@ -7,6 +7,8 @@ import '../../../../core/utils/score_calculator.dart';
 import '../../../../data/database/app_database.dart';
 
 class SplitSessionResult {
+  final DateTime startTime;
+  final DateTime endTime;
   final DateTime splitTime;
   final String firstActivityId;
   final String secondActivityId;
@@ -14,6 +16,8 @@ class SplitSessionResult {
   final String? secondNote;
 
   const SplitSessionResult({
+    required this.startTime,
+    required this.endTime,
     required this.splitTime,
     required this.firstActivityId,
     required this.secondActivityId,
@@ -201,6 +205,8 @@ class _SplitSessionDialogState extends State<SplitSessionDialog> {
                     onPressed: () {
                       Navigator.of(context).pop(
                         SplitSessionResult(
+                          startTime: widget.startTime,
+                          endTime: widget.endTime,
                           splitTime: splitDt,
                           firstActivityId: _firstActivityId,
                           secondActivityId: _secondActivityId,

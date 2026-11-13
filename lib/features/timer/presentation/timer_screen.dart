@@ -160,7 +160,7 @@ class TimerScreen extends ConsumerWidget {
           // Save Part 1
           await entryRepo.createEntry(
             activityId: result.firstActivityId,
-            startTime: startDt,
+            startTime: result.startTime,
             endTime: result.splitTime,
             note: result.firstNote,
           );
@@ -168,7 +168,7 @@ class TimerScreen extends ConsumerWidget {
           await entryRepo.createEntry(
             activityId: result.secondActivityId,
             startTime: result.splitTime,
-            endTime: now,
+            endTime: result.endTime,
             note: result.secondNote,
           );
 

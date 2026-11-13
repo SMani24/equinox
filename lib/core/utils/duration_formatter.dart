@@ -34,13 +34,17 @@ class DurationFormatter {
     return '${hours.toStringAsFixed(1)}h';
   }
 
+  static int _calendarDaysDiff(DateTime from, DateTime to) {
+    final utcFrom = DateTime.utc(from.year, from.month, from.day);
+    final utcTo = DateTime.utc(to.year, to.month, to.day);
+    return utcTo.difference(utcFrom).inDays;
+  }
+
   /// Returns time range e.g. "09:30 AM – 10:45 AM" or "11:30 PM – 7:00 AM (+1d)"
   static String formatTimeRange(DateTime start, DateTime end) {
     final format = DateFormat('h:mm a');
-    final startDate = DateTime(start.year, start.month, start.day);
-    final endDate = DateTime(end.year, end.month, end.day);
-    final daysDiff = endDate.difference(startDate).inDays;
-    final daySuffix = daysDiff > 0 ? ' (+$daysDiff${daysDiff == 1 ? 'd' : 'd'})' : '';
+    final daysDiff = _calendarDaysDiff(start, end);
+    final daySuffix = daysDiff > 0 ? ' (+${daysDiff}d)' : '';
     return '${format.format(start)} – ${format.format(end)}$daySuffix';
   }
 
@@ -53,11 +57,7 @@ class DurationFormatter {
     DateTime referenceDate,
   ) {
     final format = DateFormat('h:mm a');
-    final refDay = DateTime(referenceDate.year, referenceDate.month, referenceDate.day);
-    final startDay = DateTime(start.year, start.month, start.day);
-    final endDay = DateTime(end.year, end.month, end.day);
-
-    final startDiff = startDay.difference(refDay).inDays;
+    final startDiff = _calendarDaysDiff(referenceDate, start);
     String startPrefix = '';
     if (startDiff == -1) {
       startPrefix = 'Yesterday ';
@@ -69,7 +69,7 @@ class DurationFormatter {
       startPrefix = '${DateFormat('MMM d').format(start)} ';
     }
 
-    final endDiffFromRef = endDay.difference(refDay).inDays;
+    final endDiffFromRef = _calendarDaysDiff(referenceDate, end);
     String endSuffix = '';
     if (endDiffFromRef > 0) {
       endSuffix = ' (+${endDiffFromRef}d)';
@@ -81,10 +81,7 @@ class DurationFormatter {
   /// Returns date label e.g. "Today", "Yesterday", "Tomorrow", "Nov 6, 2026"
   static String formatDateLabel(DateTime date) {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final target = DateTime(date.year, date.month, date.day);
-
-    final diff = today.difference(target).inDays;
+    final diff = _calendarDaysDiff(date, now);
     if (diff == 0) return 'Today';
     if (diff == 1) return 'Yesterday';
     if (diff == -1) return 'Tomorrow';

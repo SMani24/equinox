@@ -3,6 +3,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/utils/duration_formatter.dart';
 import '../../../../core/utils/score_calculator.dart';
+import '../../../../core/utils/time_range_resolver.dart';
 import '../../../../data/database/app_database.dart';
 import 'future_range_warning_banner.dart';
 
@@ -33,56 +34,16 @@ class ManualEntrySheet extends StatefulWidget {
     required bool userManuallyPickedDate,
     required bool userManuallyToggledNextDay,
     required DateTime now,
-  }) {
-    final startMins = startTime.hour * 60 + startTime.minute;
-    final endMins = endTime.hour * 60 + endTime.minute;
-    final spansMidnight = endMins <= startMins;
-
-    bool resolvedNextDay =
-        userManuallyToggledNextDay ? currentIsNextDay : spansMidnight;
-    DateTime resolvedDate = currentDate;
-
-    if (!userManuallyPickedDate) {
-      final today = DateTime(now.year, now.month, now.day);
-      if (spansMidnight && !userManuallyToggledNextDay) {
-        final endOnTomorrow = DateTime(
-          today.year,
-          today.month,
-          today.day,
-          endTime.hour,
-          endTime.minute,
-        ).add(const Duration(days: 1));
-        final endOnToday = DateTime(
-          today.year,
-          today.month,
-          today.day,
-          endTime.hour,
-          endTime.minute,
-        );
-        if (endOnTomorrow.isAfter(now) && !endOnToday.isAfter(now)) {
-          resolvedDate = today.subtract(const Duration(days: 1));
-          resolvedNextDay = true;
-          return (startDate: resolvedDate, isNextDay: resolvedNextDay);
-        }
-      }
-
-      final startOnToday = DateTime(
-        today.year,
-        today.month,
-        today.day,
-        startTime.hour,
-        startTime.minute,
+  }) =>
+      TimeRangeResolver.resolveManualRange(
+        currentDate: currentDate,
+        startTime: startTime,
+        endTime: endTime,
+        currentIsNextDay: currentIsNextDay,
+        userManuallyPickedDate: userManuallyPickedDate,
+        userManuallyToggledNextDay: userManuallyToggledNextDay,
+        now: now,
       );
-      if (!spansMidnight && !startOnToday.isAfter(now)) {
-        resolvedDate = today;
-        if (!userManuallyToggledNextDay) {
-          resolvedNextDay = false;
-        }
-      }
-    }
-
-    return (startDate: resolvedDate, isNextDay: resolvedNextDay);
-  }
 
   @override
   State<ManualEntrySheet> createState() => _ManualEntrySheetState();
@@ -122,24 +83,16 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
     super.dispose();
   }
 
-  DateTime get _startDateTime => DateTime(
-        _date.year,
-        _date.month,
-        _date.day,
-        _startTime.hour,
-        _startTime.minute,
+  DateTime get _startDateTime => TimeRangeResolver.combineDateAndTime(
+        _date,
+        _startTime,
       );
 
-  DateTime get _endDateTime {
-    final baseDate = _isNextDay ? _date.add(const Duration(days: 1)) : _date;
-    return DateTime(
-      baseDate.year,
-      baseDate.month,
-      baseDate.day,
-      _endTime.hour,
-      _endTime.minute,
-    );
-  }
+  DateTime get _endDateTime => TimeRangeResolver.combineDateAndTime(
+        _date,
+        _endTime,
+        dayOffset: _isNextDay ? 1 : 0,
+      );
 
   int get _durationSeconds {
     final diff = _endDateTime.difference(_startDateTime).inSeconds;
@@ -385,7 +338,7 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
               endTime: _endTime,
               onShiftBackOneDay: () {
                 setState(() {
-                  _date = _date.subtract(const Duration(days: 1));
+                  _date = DateTime(_date.year, _date.month, _date.day - 1);
                   _userManuallyPickedDate = true;
                 });
               },

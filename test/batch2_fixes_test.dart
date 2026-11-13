@@ -3,12 +3,14 @@ import 'package:equinox/core/theme/app_icons.dart';
 import 'package:equinox/core/utils/date_boundary.dart';
 import 'package:equinox/core/utils/duration_formatter.dart';
 import 'package:equinox/core/utils/score_calculator.dart';
+import 'package:equinox/core/utils/time_range_resolver.dart';
 import 'package:equinox/data/database/app_database.dart';
 import 'package:equinox/data/repositories/activity_repository.dart';
 import 'package:equinox/data/repositories/time_entry_repository.dart';
 import 'package:equinox/data/repositories/timer_repository.dart';
 import 'package:equinox/features/activities/presentation/activity_form_sheet.dart';
 import 'package:equinox/features/timer/presentation/widgets/classify_session_sheet.dart';
+import 'package:equinox/features/timer/presentation/widgets/edit_entry_sheet.dart';
 import 'package:equinox/features/timer/presentation/widgets/manual_entry_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -482,6 +484,281 @@ void main() {
       ]);
 
       await db.close();
+    });
+
+    test('TimeRangeResolver anchors early-morning classified start adjustment to yesterday', () {
+      final morningEnd = DateTime(2026, 11, 13, 8, 42, 15);
+      final now = DateTime(2026, 11, 13, 8, 45);
+
+      // Adjusting start from 8:42 AM to 11:00 PM must land on Nov 12 11:00 PM
+      final resolvedStart = TimeRangeResolver.resolveClassifiedStartTime(
+        currentEnd: morningEnd,
+        pickedStart: const TimeOfDay(hour: 23, minute: 0),
+      );
+      expect(resolvedStart, DateTime(2026, 11, 12, 23, 0));
+      expect(resolvedStart.isBefore(morningEnd), isTrue);
+      expect(TimeRangeResolver.isInFuture(morningEnd, now), isFalse);
+
+      // Adjusting start again to 12:30 AM lands on Nov 13 12:30 AM (same morning)
+      final afterMidnightStart = TimeRangeResolver.resolveClassifiedStartTime(
+        currentEnd: morningEnd,
+        pickedStart: const TimeOfDay(hour: 0, minute: 30),
+      );
+      expect(afterMidnightStart, DateTime(2026, 11, 13, 0, 30));
+
+      // Adjusting end to 8:30 AM keeps today (Nov 13) since now is 8:45 AM
+      final adjustedEnd = TimeRangeResolver.resolveClassifiedEndTime(
+        currentStart: resolvedStart,
+        pickedEnd: const TimeOfDay(hour: 8, minute: 30),
+        now: now,
+      );
+      expect(adjustedEnd, DateTime(2026, 11, 13, 8, 30));
+
+      // Future end time is rejected
+      final futureEnd = TimeRangeResolver.resolveClassifiedEndTime(
+        currentStart: resolvedStart,
+        pickedEnd: const TimeOfDay(hour: 10, minute: 0),
+        now: now,
+      );
+      expect(futureEnd, isNull);
+    });
+
+    test('TimeRangeResolver.resolveEditedRange moves start date back instead of pushing end into future', () {
+      final now = DateTime(2026, 11, 13, 8, 45);
+
+      // Entry logged in the morning: Nov 13 8:41 AM -> Nov 13 8:42 AM
+      // User edits Start to 11:00 PM (sleep from last night).
+      final editedOvernight = TimeRangeResolver.resolveEditedRange(
+        currentStartDate: DateTime(2026, 11, 13),
+        currentStartTime: const TimeOfDay(hour: 8, minute: 41),
+        currentEndTime: const TimeOfDay(hour: 8, minute: 42),
+        currentIsNextDay: false,
+        isEditingStart: true,
+        pickedTime: const TimeOfDay(hour: 23, minute: 0),
+        userManuallyPickedDate: false,
+        userManuallyToggledNextDay: false,
+        now: now,
+      );
+      expect(editedOvernight.startDate, DateTime(2026, 11, 12));
+      expect(editedOvernight.isNextDay, isTrue);
+
+      // Re-adjusting Start to 12:30 AM restores startDate to Nov 13 (same-day AM)
+      final editedPostMidnight = TimeRangeResolver.resolveEditedRange(
+        currentStartDate: editedOvernight.startDate,
+        currentStartTime: const TimeOfDay(hour: 23, minute: 0),
+        currentEndTime: const TimeOfDay(hour: 8, minute: 42),
+        currentIsNextDay: editedOvernight.isNextDay,
+        isEditingStart: true,
+        pickedTime: const TimeOfDay(hour: 0, minute: 30),
+        userManuallyPickedDate: false,
+        userManuallyToggledNextDay: false,
+        now: now,
+      );
+      expect(editedPostMidnight.startDate, DateTime(2026, 11, 13));
+      expect(editedPostMidnight.isNextDay, isFalse);
+
+      // Historical entry on Nov 9 edited to start at 11:00 PM anchors to Nov 8 -> Nov 9
+      final editedPastDay = TimeRangeResolver.resolveEditedRange(
+        currentStartDate: DateTime(2026, 11, 9),
+        currentStartTime: const TimeOfDay(hour: 8, minute: 41),
+        currentEndTime: const TimeOfDay(hour: 8, minute: 42),
+        currentIsNextDay: false,
+        isEditingStart: true,
+        pickedTime: const TimeOfDay(hour: 23, minute: 0),
+        userManuallyPickedDate: false,
+        userManuallyToggledNextDay: false,
+        now: now,
+      );
+      expect(editedPastDay.startDate, DateTime(2026, 11, 8));
+      expect(editedPastDay.isNextDay, isTrue);
+
+      // Existing broken future entry (Nov 13 11:00 PM -> Nov 14 8:42 AM at 14:20 on Nov 13)
+      // gets rescued back to Nov 12 -> Nov 13 when edited.
+      final afternoonNow = DateTime(2026, 11, 13, 14, 20);
+      final rescued = TimeRangeResolver.resolveEditedRange(
+        currentStartDate: DateTime(2026, 11, 13),
+        currentStartTime: const TimeOfDay(hour: 23, minute: 0),
+        currentEndTime: const TimeOfDay(hour: 8, minute: 42),
+        currentIsNextDay: true,
+        isEditingStart: false,
+        pickedTime: const TimeOfDay(hour: 8, minute: 30),
+        userManuallyPickedDate: false,
+        userManuallyToggledNextDay: false,
+        now: afternoonNow,
+      );
+      expect(rescued.startDate, DateTime(2026, 11, 12));
+      expect(rescued.isNextDay, isTrue);
+    });
+
+    testWidgets('ClassifySessionSheet adjusts morning timer start to yesterday via time picker', (tester) async {
+      final now = DateTime.now();
+      final endDt = now.hour >= 9 && now.hour < 23
+          ? DateTime(now.year, now.month, now.day, 8, 42, 15)
+          : (now.hour >= 1 && now.hour < 9
+              ? DateTime(now.year, now.month, now.day, now.hour, 0, 15)
+              : DateTime(now.year, now.month, now.day, 0, now.minute, 15));
+      final startDt = endDt.subtract(const Duration(seconds: 15));
+
+      DateTime? savedStart;
+      DateTime? savedEnd;
+
+      const sleepAct = Activity(
+        id: 'sleep_1',
+        name: 'Sleep / Meals',
+        category: 'neutral',
+        coefficient: 0.0,
+        colorHex: 0xFF64748B,
+        iconCode: 1,
+        sortOrder: 0,
+        isArchived: false,
+        createdAt: 0,
+        updatedAt: 0,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ClassifySessionSheet(
+              initialStartTime: startDt,
+              initialEndTime: endDt,
+              activities: const [sleepAct],
+              onSave: ({required activityId, required startTime, required endTime, note}) {
+                savedStart = startTime;
+                savedEnd = endTime;
+              },
+              onSplitSave: (_) {},
+              onDiscard: () {},
+            ),
+          ),
+        ),
+      );
+
+      // Tap the Start chip to open the time picker
+      await tester.tap(find.textContaining('Start:'));
+      await tester.pumpAndSettle();
+
+      // Switch Flutter's Material time picker to text input mode
+      final inputModeButton = find.byIcon(Icons.keyboard_outlined);
+      if (inputModeButton.evaluate().isNotEmpty) {
+        await tester.tap(inputModeButton);
+      } else {
+        await tester.tap(find.byIcon(Icons.keyboard));
+      }
+      await tester.pumpAndSettle();
+
+      final hourField = find.byType(TextFormField).first;
+      final minuteField = find.byType(TextFormField).last;
+      await tester.enterText(hourField, '11');
+      await tester.enterText(minuteField, '00');
+      await tester.tap(find.text('PM'));
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      // UI should display Yesterday 11:00 PM (never Future or Tomorrow!)
+      expect(find.textContaining('Yesterday'), findsOneWidget);
+      expect(find.textContaining('Ends in the future'), findsNothing);
+
+      // Tap activity to save
+      await tester.tap(find.text('Sleep / Meals'));
+      await tester.pump();
+
+      final expectedYesterday = DateTime(endDt.year, endDt.month, endDt.day - 1, 23, 0);
+      expect(savedStart, expectedYesterday);
+      expect(savedEnd, endDt);
+    });
+
+    testWidgets('EditEntrySheet keeps end today and shifts start yesterday when moving start past midnight', (tester) async {
+      final now = DateTime.now();
+      final endDt = now.hour >= 9 && now.hour < 23
+          ? DateTime(now.year, now.month, now.day, 8, 42)
+          : (now.hour >= 1 && now.hour < 9
+              ? DateTime(now.year, now.month, now.day, now.hour, 1)
+              : DateTime(now.year, now.month, now.day, 0, now.minute > 0 ? now.minute : 1));
+      final startDt = endDt.subtract(const Duration(minutes: 1));
+
+      DateTime? savedStart;
+      DateTime? savedEnd;
+
+      const sleepAct = Activity(
+        id: 'sleep_1',
+        name: 'Sleep / Meals',
+        category: 'neutral',
+        coefficient: 0.0,
+        colorHex: 0xFF64748B,
+        iconCode: 1,
+        sortOrder: 0,
+        isArchived: false,
+        createdAt: 0,
+        updatedAt: 0,
+      );
+
+      final item = TimeEntryWithActivity(
+        entry: TimeEntry(
+          id: 'entry_1',
+          activityId: sleepAct.id,
+          startTime: startDt.millisecondsSinceEpoch,
+          endTime: endDt.millisecondsSinceEpoch,
+          durationSeconds: 60,
+          coefficientSnapshot: 0.0,
+          scoreSnapshot: 0.0,
+          note: null,
+          createdAt: 0,
+          updatedAt: 0,
+        ),
+        activity: sleepAct,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: EditEntrySheet(
+              item: item,
+              activities: const [sleepAct],
+              onSave: ({
+                required entryId,
+                required activityId,
+                required startTime,
+                required endTime,
+                note,
+              }) {
+                savedStart = startTime;
+                savedEnd = endTime;
+              },
+              onDelete: () {},
+            ),
+          ),
+        ),
+      );
+
+      // Tap Start tile to change beginning time from 8:41 AM to 11:00 PM
+      await tester.tap(find.text('Start'));
+      await tester.pumpAndSettle();
+
+      final inputModeButton = find.byIcon(Icons.keyboard_outlined);
+      if (inputModeButton.evaluate().isNotEmpty) {
+        await tester.tap(inputModeButton);
+      } else {
+        await tester.tap(find.byIcon(Icons.keyboard));
+      }
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField).first, '11');
+      await tester.enterText(find.byType(TextFormField).last, '00');
+      await tester.tap(find.text('PM'));
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      // Should not trigger Tomorrow / Future warning
+      expect(find.textContaining('Ends in the future'), findsNothing);
+      expect(find.text('Yesterday'), findsWidgets);
+
+      final saveBtn = find.text('Save Changes');
+      await tester.ensureVisible(saveBtn);
+      await tester.tap(saveBtn);
+      await tester.pump();
+
+      expect(savedStart, DateTime(now.year, now.month, now.day - 1, 23, 0));
+      expect(savedEnd, endDt);
     });
   });
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/utils/duration_formatter.dart';
+import '../../../../core/utils/time_range_resolver.dart';
 
 /// Displays an amber warning banner when an entry's end time is in the future,
 /// offering a one-tap action to shift the session back by one day when valid.
@@ -18,14 +19,19 @@ class FutureRangeWarningBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final graceCutoff = now.add(const Duration(minutes: 1));
-    if (!endDateTime.isAfter(graceCutoff)) {
+    if (!TimeRangeResolver.isInFuture(endDateTime, now)) {
       return const SizedBox.shrink();
     }
 
-    final canShiftBack = !endDateTime
-        .subtract(const Duration(days: 1))
-        .isAfter(graceCutoff);
+    final shiftedBackEnd = DateTime(
+      endDateTime.year,
+      endDateTime.month,
+      endDateTime.day - 1,
+      endDateTime.hour,
+      endDateTime.minute,
+      endDateTime.second,
+    );
+    final canShiftBack = !TimeRangeResolver.isInFuture(shiftedBackEnd, now);
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),

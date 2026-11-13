@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/utils/duration_formatter.dart';
 import '../../../../core/utils/score_calculator.dart';
+import '../../../../core/utils/time_range_resolver.dart';
 import '../../../../data/database/app_database.dart';
+import 'future_range_warning_banner.dart';
 import 'split_session_dialog.dart';
 
 class ClassifySessionSheet extends StatefulWidget {
@@ -71,28 +74,157 @@ class _ClassifySessionSheetState extends State<ClassifySessionSheet> {
       initialTime: TimeOfDay.fromDateTime(initial),
     );
 
-    if (pickedTime == null) return;
+    if (pickedTime == null || !mounted) return;
+    if (pickedTime == TimeOfDay.fromDateTime(initial)) return;
 
-    setState(() {
-      final newDt = DateTime(
-        initial.year,
-        initial.month,
-        initial.day,
-        pickedTime.hour,
-        pickedTime.minute,
-        initial.second,
+    final now = DateTime.now();
+    if (isStart) {
+      final resolvedStart = TimeRangeResolver.resolveClassifiedStartTime(
+        currentEnd: _endTime,
+        pickedStart: pickedTime,
       );
-
-      if (isStart) {
-        if (newDt.isBefore(_endTime)) {
-          _startTime = newDt;
-        }
-      } else {
-        if (newDt.isAfter(_startTime)) {
-          _endTime = newDt;
-        }
+      setState(() {
+        _startTime = resolvedStart;
+      });
+    } else {
+      final resolvedEnd = TimeRangeResolver.resolveClassifiedEndTime(
+        currentStart: _startTime,
+        pickedEnd: pickedTime,
+        now: now,
+      );
+      if (resolvedEnd == null) {
+        final candidateOnStartDay =
+            TimeRangeResolver.combineDateAndTime(_startTime, pickedTime);
+        final candidateDayAfterStart = TimeRangeResolver.combineDateAndTime(
+          _startTime,
+          pickedTime,
+          dayOffset: 1,
+        );
+        final isFutureRejection = candidateOnStartDay.isAfter(_startTime) ||
+            (candidateDayAfterStart.isAfter(_startTime) &&
+                TimeRangeResolver.dateOnly(candidateDayAfterStart) ==
+                    TimeRangeResolver.dateOnly(now));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isFutureRejection
+                  ? 'End time cannot be in the future'
+                  : 'End time must be after start time',
+            ),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
       }
-    });
+      setState(() {
+        _endTime = resolvedEnd;
+      });
+    }
+  }
+
+  String _formatBoundaryTime(BuildContext context, DateTime dt, DateTime now) {
+    final timeText = TimeOfDay.fromDateTime(dt).format(context);
+    final diff = TimeRangeResolver.calendarDaysBetween(dt, now);
+    if (diff == 0) return timeText;
+    if (diff == 1) return 'Yesterday $timeText';
+    if (diff == -1) return 'Tomorrow $timeText';
+    final dateText = dt.year == now.year
+        ? DateFormat('MMM d').format(dt)
+        : DateFormat('MMM d, yyyy').format(dt);
+    return '$dateText $timeText';
+  }
+
+  Widget _buildTimeChip({
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+    bool compact = false,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 7 : 9,
+          vertical: compact ? 3 : 5,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.edit, size: compact ? 10 : 12, color: AppColors.textMuted),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                '$label: $value',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: compact ? 11 : 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimeBoundariesSection(BuildContext context, {bool compact = false}) {
+    final now = DateTime.now();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: compact ? 6 : 8,
+          runSpacing: 6,
+          children: [
+            _buildTimeChip(
+              label: 'Start',
+              value: _formatBoundaryTime(context, _startTime, now),
+              onTap: () => _pickTime(isStart: true),
+              compact: compact,
+            ),
+            _buildTimeChip(
+              label: 'End',
+              value: _formatBoundaryTime(context, _endTime, now),
+              onTap: () => _pickTime(isStart: false),
+              compact: compact,
+            ),
+          ],
+        ),
+        FutureRangeWarningBanner(
+          endDateTime: _endTime,
+          endTime: TimeOfDay.fromDateTime(_endTime),
+          onShiftBackOneDay: () {
+            setState(() {
+              _startTime = DateTime(
+                _startTime.year,
+                _startTime.month,
+                _startTime.day - 1,
+                _startTime.hour,
+                _startTime.minute,
+                _startTime.second,
+              );
+              _endTime = DateTime(
+                _endTime.year,
+                _endTime.month,
+                _endTime.day - 1,
+                _endTime.hour,
+                _endTime.minute,
+                _endTime.second,
+              );
+            });
+          },
+        ),
+      ],
+    );
   }
 
   Future<void> _handleSplit() async {
@@ -249,51 +381,15 @@ class _ClassifySessionSheetState extends State<ClassifySessionSheet> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  timeStr,
-                                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        color: AppColors.textPrimary,
-                                      ),
-                                ),
-                                const SizedBox(width: 8),
-                                Flexible(
-                                  child: InkWell(
-                                    onTap: () => _pickTime(isStart: true),
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.surface,
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: AppColors.border),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(Icons.edit, size: 10, color: AppColors.textMuted),
-                                          const SizedBox(width: 4),
-                                          Flexible(
-                                            child: Text(
-                                              DurationFormatter.formatTimeRange(_startTime, _endTime),
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w600,
-                                                color: AppColors.textSecondary,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
+                            Text(
+                              timeStr,
+                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.textPrimary,
                                   ),
-                                ),
-                              ],
                             ),
+                            const SizedBox(height: 8),
+                            _buildTimeBoundariesSection(context, compact: true),
                             const SizedBox(height: 8),
                             SizedBox(
                               width: double.infinity,
@@ -426,73 +522,46 @@ class _ClassifySessionSheetState extends State<ClassifySessionSheet> {
 
         // Duration & Start/End Time Adjusters
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           child: Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: AppColors.surfaceElevated,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: AppColors.border),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'DURATION',
-                        style: TextStyle(
-                          fontSize: 10,
-                          letterSpacing: 1.0,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        timeStr,
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        InkWell(
-                          onTap: () => _pickTime(isStart: true),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.edit, size: 12, color: AppColors.textMuted),
-                                const SizedBox(width: 4),
-                                Text(
-                                  DurationFormatter.formatTimeRange(_startTime, _endTime),
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
+                        const Text(
+                          'DURATION',
+                          style: TextStyle(
+                            fontSize: 10,
+                            letterSpacing: 1.0,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textMuted,
                           ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          timeStr,
+                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
                     TextButton.icon(
                       style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         visualDensity: VisualDensity.compact,
                       ),
                       onPressed: _handleSplit,
@@ -501,6 +570,8 @@ class _ClassifySessionSheetState extends State<ClassifySessionSheet> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+                _buildTimeBoundariesSection(context),
               ],
             ),
           ),

@@ -3,6 +3,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_icons.dart';
 import '../../../../core/utils/duration_formatter.dart';
 import '../../../../core/utils/score_calculator.dart';
+import '../../../../core/utils/time_range_resolver.dart';
 import '../../../../data/database/app_database.dart';
 import '../../../../data/repositories/time_entry_repository.dart';
 import 'future_range_warning_banner.dart';
@@ -36,6 +37,8 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
   late TimeOfDay _startTime;
   late TimeOfDay _endTime;
   late bool _isNextDay;
+  bool _userManuallyPickedDate = false;
+  bool _userManuallyToggledNextDay = false;
   late String _selectedActivityId;
   late TextEditingController _noteController;
 
@@ -61,24 +64,16 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
     super.dispose();
   }
 
-  DateTime get _startDateTime => DateTime(
-        _date.year,
-        _date.month,
-        _date.day,
-        _startTime.hour,
-        _startTime.minute,
+  DateTime get _startDateTime => TimeRangeResolver.combineDateAndTime(
+        _date,
+        _startTime,
       );
 
-  DateTime get _endDateTime {
-    final baseDate = _isNextDay ? _date.add(const Duration(days: 1)) : _date;
-    return DateTime(
-      baseDate.year,
-      baseDate.month,
-      baseDate.day,
-      _endTime.hour,
-      _endTime.minute,
-    );
-  }
+  DateTime get _endDateTime => TimeRangeResolver.combineDateAndTime(
+        _date,
+        _endTime,
+        dayOffset: _isNextDay ? 1 : 0,
+      );
 
   int get _durationSeconds {
     final diff = _endDateTime.difference(_startDateTime).inSeconds;
@@ -104,6 +99,7 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
     if (picked != null) {
       setState(() {
         _date = picked;
+        _userManuallyPickedDate = true;
       });
     }
   }
@@ -116,14 +112,24 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
     );
     if (picked != null) {
       setState(() {
+        final resolved = TimeRangeResolver.resolveEditedRange(
+          currentStartDate: _date,
+          currentStartTime: _startTime,
+          currentEndTime: _endTime,
+          currentIsNextDay: _isNextDay,
+          isEditingStart: isStart,
+          pickedTime: picked,
+          userManuallyPickedDate: _userManuallyPickedDate,
+          userManuallyToggledNextDay: _userManuallyToggledNextDay,
+          now: DateTime.now(),
+        );
         if (isStart) {
           _startTime = picked;
         } else {
           _endTime = picked;
         }
-        final startMins = _startTime.hour * 60 + _startTime.minute;
-        final endMins = _endTime.hour * 60 + _endTime.minute;
-        _isNextDay = endMins <= startMins;
+        _date = resolved.startDate;
+        _isNextDay = resolved.isNextDay;
       });
     }
   }
@@ -612,6 +618,7 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
               borderRadius: BorderRadius.circular(8),
               onTap: () {
                 setState(() {
+                  _userManuallyToggledNextDay = true;
                   _isNextDay = !_isNextDay;
                 });
               },
@@ -646,7 +653,8 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
               endTime: _endTime,
               onShiftBackOneDay: () {
                 setState(() {
-                  _date = _date.subtract(const Duration(days: 1));
+                  _date = DateTime(_date.year, _date.month, _date.day - 1);
+                  _userManuallyPickedDate = true;
                 });
               },
             ),
