@@ -1,33 +1,34 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Backgrounds & Surfaces (Deep Obsidian Aesthetic)
-  static const Color background = Color(0xFF0F1117);
-  static const Color surface = Color(0xFF181B24);
-  static const Color surfaceElevated = Color(0xFF222634);
-  static const Color surfaceHighlight = Color(0xFF2C3244);
-  static const Color border = Color(0xFF2D3345);
-  static const Color borderSubtle = Color(0xFF1E2330);
+  // Backgrounds & Surfaces (Calm Instrument Obsidian Ladder)
+  static const Color background = Color(0xFF0B0D12);
+  static const Color surface = Color(0xFF12151C);
+  static const Color surfaceElevated = Color(0xFF191D26);
+  static const Color surfaceHighlight = Color(0xFF222734);
+  static const Color border = Color(0xFF272D3B);
+  static const Color borderSubtle = Color(0xFF1B1F29);
 
   // Text Colors
   static const Color textPrimary = Color(0xFFF1F5F9);
-  static const Color textSecondary = Color(0xFF94A3B8);
-  static const Color textMuted = Color(0xFF64748B);
+  static const Color textSecondary = Color(0xFF9CA3AF);
+  static const Color textMuted = Color(0xFF6B7280);
 
   // Category & Balance Accents
-  static const Color productive = Color(0xFF10B981); // Emerald
-  static const Color productiveGlow = Color(0x3310B981);
-  static const Color rest = Color(0xFFF43F5E); // Rose / Coral
-  static const Color restGlow = Color(0x33F43F5E);
+  static const Color productive = Color(0xFF34D399); // Emerald
+  static const Color productiveGlow = Color(0x2834D399);
+  static const Color rest = Color(0xFFFBBF24); // Warm Amber (healthy rest)
+  static const Color restGlow = Color(0x28FBBF24);
+  static const Color danger = Color(0xFFFB7185); // Coral (over budget / deficit)
   static const Color restWarning = Color(0xFFF97316); // Orange
   static const Color restMild = Color(0xFFF59E0B); // Amber
-  static const Color neutral = Color(0xFF64748B); // Slate
-  static const Color neutralGlow = Color(0x3364748B);
+  static const Color neutral = Color(0xFF94A3B8); // Slate
+  static const Color neutralGlow = Color(0x2894A3B8);
 
   // Primary Action Accent
   static const Color primary = Color(0xFF6366F1); // Indigo
   static const Color primaryLight = Color(0xFF818CF8);
-  static const Color primaryGlow = Color(0x406366F1);
+  static const Color primaryGlow = Color(0x386366F1);
 
   // Curated Color Palette for Activities
   static const List<Color> activityPalette = [

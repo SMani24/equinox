@@ -6,7 +6,11 @@ import '../../../core/utils/score_calculator.dart';
 import '../../../data/database/app_database.dart';
 import '../../../data/repositories/time_entry_repository.dart';
 import '../../../data/repositories/timer_repository.dart';
+import '../../activities/providers/activities_provider.dart';
+import '../../analytics/domain/time_slicer.dart';
 import '../../settings/providers/settings_provider.dart';
+import '../../smart/gap_detector.dart';
+import '../../smart/suggestion_engine.dart';
 
 export '../../../data/repositories/timer_repository.dart' show TimerState;
 
@@ -272,6 +276,7 @@ class TodayScoreSummary {
   final int restSeconds;
   final int neutralSeconds;
   final double targetGoal;
+  final double? dailyRestBudget;
 
   const TodayScoreSummary({
     required this.grossProductiveScore,
@@ -281,9 +286,11 @@ class TodayScoreSummary {
     required this.restSeconds,
     required this.neutralSeconds,
     required this.targetGoal,
+    this.dailyRestBudget,
   });
 
-  factory TodayScoreSummary.empty(double target) => TodayScoreSummary(
+  factory TodayScoreSummary.empty(double target, {double? dailyRestBudget}) =>
+      TodayScoreSummary(
         grossProductiveScore: 0.0,
         grossRestCost: 0.0,
         netScore: 0.0,
@@ -291,6 +298,7 @@ class TodayScoreSummary {
         restSeconds: 0,
         neutralSeconds: 0,
         targetGoal: target,
+        dailyRestBudget: dailyRestBudget,
       );
 }
 
@@ -306,7 +314,10 @@ final todayScoreSummaryProvider = Provider<TodayScoreSummary>((ref) {
   final entries = entriesAsync.value ?? [];
 
   if (entries.isEmpty) {
-    return TodayScoreSummary.empty(settings.equilibriumTarget);
+    return TodayScoreSummary.empty(
+      settings.equilibriumTarget,
+      dailyRestBudget: settings.dailyRestBudget,
+    );
   }
 
   final dayStart = DateBoundary.getDayStart(
@@ -317,36 +328,28 @@ final todayScoreSummaryProvider = Provider<TodayScoreSummary>((ref) {
     logicalToday,
     rolloverHour: settings.rolloverHour,
   );
-  final dayStartMs = dayStart.millisecondsSinceEpoch;
-  final dayEndMs = dayEnd.millisecondsSinceEpoch;
+
+  final slices = TimeSlicer.sliceEntries(
+    entries,
+    rolloverHour: settings.rolloverHour,
+    rangeStart: dayStart,
+    rangeEnd: dayEnd,
+  );
 
   int prodSec = 0;
   int restSec = 0;
   int neutralSec = 0;
   final scores = <double>[];
 
-  for (final item in entries) {
-    final cat = item.activity.category;
-    // Calculate overlap within today's logical boundary
-    final entryStart = item.entry.startTime;
-    final entryEnd = item.entry.endTime;
-    final effectiveStart = entryStart < dayStartMs ? dayStartMs : entryStart;
-    final effectiveEnd = entryEnd > dayEndMs ? dayEndMs : entryEnd;
-    final effectiveDur = ((effectiveEnd - effectiveStart) / 1000).round();
-    if (effectiveDur <= 0) continue;
-
-    final effectiveScore = ScoreCalculator.calculateScore(
-      effectiveDur,
-      item.entry.coefficientSnapshot,
-    );
-
-    scores.add(effectiveScore);
+  for (final s in slices) {
+    scores.add(s.score);
+    final cat = s.activity.category;
     if (cat == 'productive') {
-      prodSec += effectiveDur;
+      prodSec += s.seconds;
     } else if (cat == 'rest') {
-      restSec += effectiveDur;
+      restSec += s.seconds;
     } else {
-      neutralSec += effectiveDur;
+      neutralSec += s.seconds;
     }
   }
 
@@ -358,5 +361,126 @@ final todayScoreSummaryProvider = Provider<TodayScoreSummary>((ref) {
     restSeconds: restSec,
     neutralSeconds: neutralSec,
     targetGoal: settings.equilibriumTarget,
+    dailyRestBudget: settings.dailyRestBudget,
+  );
+});
+
+/// 60-day history stream shared across suggestion ranking, gap recovery, and sparklines.
+final recentHistoryEntriesProvider =
+    StreamProvider<List<TimeEntryWithActivity>>((ref) {
+  final entryRepo = ref.watch(timeEntryRepositoryProvider);
+  final settings = ref.watch(settingsProvider);
+  final logicalDateAsync = ref.watch(currentLogicalDateProvider);
+  final logicalToday = logicalDateAsync.value ??
+      DateBoundary.getLogicalDate(
+        DateTime.now(),
+        rolloverHour: settings.rolloverHour,
+      );
+  final start = DateBoundary.getDayStart(
+    DateTime(logicalToday.year, logicalToday.month, logicalToday.day - 60),
+    rolloverHour: settings.rolloverHour,
+  );
+  final end = DateBoundary.getDayEnd(
+    logicalToday,
+    rolloverHour: settings.rolloverHour,
+  );
+  return entryRepo.watchEntriesBetween(start, end);
+});
+
+/// Ranked quick-start activity suggestions based on recent history & time context.
+final activitySuggestionsProvider = Provider<List<ActivitySuggestion>>((ref) {
+  final settings = ref.watch(settingsProvider);
+  final activities = ref.watch(activitiesStreamProvider).value ?? [];
+  final history = ref.watch(recentHistoryEntriesProvider).value ?? [];
+  final todayEntries = ref.watch(todayEntriesStreamProvider).value ?? [];
+
+  if (!settings.smartSuggestionsEnabled) {
+    return activities
+        .where((a) => !a.isArchived)
+        .map((a) => ActivitySuggestion(activity: a, score: 0.0))
+        .toList();
+  }
+
+  final now = DateTime.now();
+  TimeEntryWithActivity? prev;
+  for (final e in todayEntries) {
+    if (e.entry.endTime <= now.millisecondsSinceEpoch) {
+      if (prev == null || e.entry.endTime > prev.entry.endTime) {
+        prev = e;
+      }
+    }
+  }
+
+  return SuggestionEngine.rankActivities(
+    activities: activities,
+    historyEntries: history,
+    now: now,
+    previousEntry: prev,
+  );
+});
+
+/// Untracked gaps >= minGapMinutes detected in today's timeline.
+final todayGapsProvider = Provider<List<TimeGap>>((ref) {
+  final settings = ref.watch(settingsProvider);
+  if (!settings.gapRemindersEnabled) return const [];
+
+  final todayEntries = ref.watch(todayEntriesStreamProvider).value ?? [];
+  final timerState = ref.watch(timerStateProvider).value ?? TimerState.idle();
+  final logicalToday = ref.watch(currentLogicalDateProvider).value ??
+      DateBoundary.getLogicalDate(
+        DateTime.now(),
+        rolloverHour: settings.rolloverHour,
+      );
+
+  final dayStart = DateBoundary.getDayStart(
+    logicalToday,
+    rolloverHour: settings.rolloverHour,
+  );
+  final dayEnd = DateBoundary.getDayEnd(
+    logicalToday,
+    rolloverHour: settings.rolloverHour,
+  );
+
+  return GapDetector.findGaps(
+    entries: todayEntries,
+    rangeStart: dayStart,
+    rangeEnd: dayEnd,
+    now: DateTime.now(),
+    minGapMinutes: settings.minGapMinutes,
+    includeLeadingBeforeFirstEntry: false,
+    includeTrailingUpToNow: !timerState.isRunning && !timerState.isPaused,
+  );
+});
+
+/// Proactive morning catch-up banner when last night's sleep wasn't logged yet.
+final morningSleepCatchupProvider = Provider<SleepCatchupSuggestion?>((ref) {
+  final settings = ref.watch(settingsProvider);
+  if (!settings.gapRemindersEnabled) return null;
+
+  final activities = ref.watch(activitiesStreamProvider).value ?? [];
+  final history = ref.watch(recentHistoryEntriesProvider).value ?? [];
+
+  return GapDetector.detectMorningSleepCatchup(
+    activities: activities,
+    recentEntries: history,
+    now: DateTime.now(),
+    rolloverHour: settings.rolloverHour,
+    dismissedDateKey: settings.dismissedSleepCatchupDate,
+  );
+});
+
+/// True if an active running timer likely was left on accidentally.
+final forgottenTimerWarningProvider = Provider<bool>((ref) {
+  final settings = ref.watch(settingsProvider);
+  if (!settings.forgottenTimerAlertEnabled) return false;
+
+  final timerState = ref.watch(timerStateProvider).value ?? TimerState.idle();
+  if (!timerState.isRunning) return false;
+
+  final history = ref.watch(recentHistoryEntriesProvider).value ?? [];
+  return GapDetector.shouldWarnForgottenTimer(
+    elapsedSeconds: timerState.elapsedSeconds,
+    preselectedActivityId: timerState.preselectedActivityId,
+    historyEntries: history,
   );
 });

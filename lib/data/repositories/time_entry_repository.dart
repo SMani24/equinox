@@ -212,6 +212,23 @@ class TimeEntryRepository {
     await (db.delete(db.timeEntries)..where((t) => t.id.equals(id))).go();
   }
 
+  Future<void> restoreEntry(TimeEntry entry) async {
+    await db.into(db.timeEntries).insertOnConflictUpdate(
+          TimeEntriesCompanion.insert(
+            id: entry.id,
+            activityId: entry.activityId,
+            startTime: entry.startTime,
+            endTime: entry.endTime,
+            durationSeconds: entry.durationSeconds,
+            coefficientSnapshot: entry.coefficientSnapshot,
+            scoreSnapshot: entry.scoreSnapshot,
+            note: Value(entry.note),
+            createdAt: entry.createdAt,
+            updatedAt: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+  }
+
   Future<void> splitEntry({
     required String originalEntryId,
     required DateTime splitTime,

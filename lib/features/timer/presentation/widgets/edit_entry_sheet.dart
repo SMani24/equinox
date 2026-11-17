@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_icons.dart';
+import '../../../../core/theme/eq_colors.dart';
+import '../../../../core/theme/tokens.dart';
+import '../../../../core/ui/activity_picker_sheet.dart';
+import '../../../../core/ui/score_pill.dart';
 import '../../../../core/utils/duration_formatter.dart';
 import '../../../../core/utils/score_calculator.dart';
 import '../../../../core/utils/time_range_resolver.dart';
 import '../../../../data/database/app_database.dart';
 import '../../../../data/repositories/time_entry_repository.dart';
+import '../../../smart/suggestion_engine.dart';
 import 'future_range_warning_banner.dart';
 
 class EditEntrySheet extends StatefulWidget {
   final TimeEntryWithActivity item;
   final List<Activity> activities;
+  final List<ActivitySuggestion> suggestions;
+  final Map<String, List<String>> recentNotesByActivity;
   final void Function({
     required String entryId,
     required String activityId,
@@ -24,6 +30,8 @@ class EditEntrySheet extends StatefulWidget {
     super.key,
     required this.item,
     required this.activities,
+    this.suggestions = const [],
+    this.recentNotesByActivity = const {},
     required this.onSave,
     required this.onDelete,
   });
@@ -135,203 +143,28 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
   }
 
   void _showActivityPickerDialog() {
-    showModalBottomSheet(
+    ActivityPickerSheet.show(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      builder: (ctx) {
-        String filter = 'all';
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            final filtered = widget.activities.where((a) {
-              if (filter == 'all') return true;
-              return a.category == filter;
-            }).toList();
-
-            final pickerSize = MediaQuery.of(ctx).size;
-            final isPickerLandscape = pickerSize.width > pickerSize.height || pickerSize.height < 520;
-
-            return Container(
-              constraints: BoxConstraints(
-                maxHeight: isPickerLandscape ? pickerSize.height * 0.95 : pickerSize.height * 0.75,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppColors.border,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Select Activity',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Choose the new activity to re-classify this session',
-                    style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Filter chips
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        FilterChip(
-                          selected: filter == 'all',
-                          label: const Text('All Activities'),
-                          onSelected: (_) => setDialogState(() => filter = 'all'),
-                        ),
-                        const SizedBox(width: 8),
-                        FilterChip(
-                          selected: filter == 'productive',
-                          label: const Text('Productive (+)'),
-                          onSelected: (_) => setDialogState(() => filter = 'productive'),
-                        ),
-                        const SizedBox(width: 8),
-                        FilterChip(
-                          selected: filter == 'rest',
-                          label: const Text('Rest & Leisure (-)'),
-                          onSelected: (_) => setDialogState(() => filter = 'rest'),
-                        ),
-                        const SizedBox(width: 8),
-                        FilterChip(
-                          selected: filter == 'neutral',
-                          label: const Text('Neutral (0)'),
-                          onSelected: (_) => setDialogState(() => filter = 'neutral'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, idx) {
-                        final act = filtered[idx];
-                        final isSelected = act.id == _selectedActivityId;
-                        final scorePreview = ScoreCalculator.calculateScore(
-                          _durationSeconds,
-                          act.coefficient,
-                        );
-
-                        return Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onTap: () {
-                              setState(() {
-                                _selectedActivityId = act.id;
-                              });
-                              Navigator.of(dialogContext).pop();
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? Color(act.colorHex).withValues(alpha: 0.15)
-                                    : AppColors.surfaceElevated,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? Color(act.colorHex)
-                                      : AppColors.border,
-                                  width: isSelected ? 1.5 : 1,
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: Color(act.colorHex).withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Icon(
-                                      AppIcons.getIconData(act.iconCode),
-                                      color: Color(act.colorHex),
-                                      size: 20,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          act.name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                        Text(
-                                          '${ScoreCalculator.formatCoefficient(act.coefficient)} • ${act.category.toUpperCase()}',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: AppColors.forCoefficient(act.coefficient),
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.forCoefficient(act.coefficient)
-                                          .withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      ScoreCalculator.formatScore(scorePreview),
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
-                                        color: AppColors.forCoefficient(act.coefficient),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
+      title: 'Select Activity',
+      subtitle: 'Choose the activity for this session',
+      activities: widget.activities,
+      suggestions: widget.suggestions,
+      selectedActivityId: _selectedActivityId,
+      previewDurationSeconds: _durationSeconds,
+      onSelected: (act) {
+        if (act != null) {
+          setState(() => _selectedActivityId = act.id);
+        }
       },
     );
   }
 
   void _confirmDelete() async {
+    final eq = context.eq;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Session?'),
+        title: const Text('Delete session?'),
         content: Text(
           'Remove this ${widget.item.activity.name} entry permanently?',
         ),
@@ -341,7 +174,7 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.rest),
+            style: FilledButton.styleFrom(backgroundColor: eq.danger),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Delete'),
           ),
@@ -357,12 +190,14 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
 
   @override
   Widget build(BuildContext context) {
+    final eq = context.eq;
     final durationSec = _durationSeconds;
     final startDt = _startDateTime;
     final endDt = _endDateTime;
     final act = _selectedActivity;
     final score = ScoreCalculator.calculateScore(durationSec, act.coefficient);
-    final scoreColor = AppColors.forCoefficient(act.coefficient);
+    final scoreColor = eq.forCoefficient(act.coefficient);
+    final recentNotes = widget.recentNotesByActivity[_selectedActivityId] ?? const <String>[];
 
     final size = MediaQuery.of(context).size;
     final isLandscape = size.width > size.height || size.height < 520;
@@ -387,15 +222,15 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
           children: [
             Center(
               child: Container(
-                width: 40,
+                width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.border,
+                  color: eq.border,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: Space.md),
 
             // Sheet Title & Actions
             Row(
@@ -403,14 +238,12 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
               children: [
                 Text(
                   'Edit Time Entry',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
                 Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.delete_outline, color: AppColors.rest),
+                      icon: Icon(Icons.delete_outline, color: eq.danger),
                       tooltip: 'Delete session',
                       onPressed: _confirmDelete,
                     ),
@@ -422,64 +255,51 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: Space.md),
 
             // Highlighted Active Activity Card (Tap to change)
             Material(
-              color: Colors.transparent,
+              color: Color(act.colorHex).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(Radii.lg),
+              clipBehavior: Clip.antiAlias,
               child: InkWell(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(Radii.lg),
                 onTap: _showActivityPickerDialog,
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(Space.md),
                   decoration: BoxDecoration(
-                    color: Color(act.colorHex).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(Radii.lg),
                     border: Border.all(
-                      color: Color(act.colorHex).withValues(alpha: 0.5),
+                      color: Color(act.colorHex).withValues(alpha: 0.45),
                       width: 1.5,
                     ),
                   ),
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: Color(act.colorHex).withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(14),
+                          color: Color(act.colorHex).withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(Radii.md),
                         ),
                         child: Icon(
                           AppIcons.getIconData(act.iconCode),
                           color: Color(act.colorHex),
-                          size: 24,
+                          size: 22,
                         ),
                       ),
-                      const SizedBox(width: 14),
+                      const SizedBox(width: Space.md),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'ACTIVITY',
-                              style: TextStyle(
-                                fontSize: 10,
-                                letterSpacing: 0.8,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textMuted,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
                             Text(
                               act.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 16,
-                                color: AppColors.textPrimary,
-                              ),
+                              style: Theme.of(context).textTheme.titleMedium,
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Weight: ${ScoreCalculator.formatCoefficient(act.coefficient)} • ${act.category.toUpperCase()}',
+                              '${ScoreCalculator.formatCoefficient(act.coefficient)} • ${act.category[0].toUpperCase()}${act.category.substring(1)}',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: scoreColor,
@@ -495,28 +315,25 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.15),
+                          color: eq.accentSoft,
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: AppColors.primary.withValues(alpha: 0.3),
-                          ),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
                               'Change',
                               style: TextStyle(
                                 fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
+                                fontWeight: FontWeight.w600,
+                                color: eq.accent,
                               ),
                             ),
-                            SizedBox(width: 4),
+                            const SizedBox(width: 4),
                             Icon(
                               Icons.sync_alt_rounded,
                               size: 14,
-                              color: AppColors.primary,
+                              color: eq.accent,
                             ),
                           ],
                         ),
@@ -526,96 +343,122 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: Space.md),
 
             // Start Date Selector
-            ListTile(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: AppColors.border),
+            Material(
+              color: eq.surface2,
+              borderRadius: BorderRadius.circular(Radii.md),
+              clipBehavior: Clip.antiAlias,
+              child: ListTile(
+                leading: const Icon(Icons.calendar_today, size: 18),
+                title: const Text('Start Date'),
+                trailing: Text(
+                  DurationFormatter.formatDateLabel(_date),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                onTap: _pickDate,
               ),
-              tileColor: AppColors.surfaceElevated,
-              leading: const Icon(Icons.calendar_today, size: 20),
-              title: const Text('Start Date'),
-              trailing: Text(
-                DurationFormatter.formatDateLabel(_date),
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              onTap: _pickDate,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: Space.md),
 
             // Time Range Selectors (Start & End)
             Row(
               children: [
                 Expanded(
-                  child: ListTile(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(color: AppColors.border),
-                    ),
-                    tileColor: AppColors.surfaceElevated,
-                    leading: const Icon(Icons.schedule, size: 20),
-                    title: const Text('Start', style: TextStyle(fontSize: 12)),
-                    subtitle: Text(
-                      '${_startTime.format(context)}\n${DurationFormatter.formatDateLabel(startDt)}',
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                    ),
-                    isThreeLine: true,
-                    onTap: () => _pickTime(isStart: true),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ListTile(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(
-                        color: _isNextDay ? AppColors.primary : AppColors.border,
+                  child: Material(
+                    color: eq.surface2,
+                    borderRadius: BorderRadius.circular(Radii.md),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => _pickTime(isStart: true),
+                      child: Padding(
+                        padding: const EdgeInsets.all(Space.md),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Start', style: TextStyle(fontSize: 12, color: eq.textMuted)),
+                            const SizedBox(height: 4),
+                            Text(
+                              _startTime.format(context),
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                            ),
+                            Text(
+                              DurationFormatter.formatDateLabel(startDt),
+                              style: TextStyle(fontSize: 12, color: eq.textSecondary),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    tileColor: AppColors.surfaceElevated,
-                    leading: const Icon(Icons.schedule, size: 20),
-                    title: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('End', style: TextStyle(fontSize: 12)),
-                        if (_isNextDay)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
+                  ),
+                ),
+                const SizedBox(width: Space.md),
+                Expanded(
+                  child: Material(
+                    color: eq.surface2,
+                    borderRadius: BorderRadius.circular(Radii.md),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => _pickTime(isStart: false),
+                      child: Container(
+                        padding: const EdgeInsets.all(Space.md),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(Radii.md),
+                          border: _isNextDay
+                              ? Border.all(color: eq.accent.withValues(alpha: 0.6))
+                              : null,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('End', style: TextStyle(fontSize: 12, color: eq.textMuted)),
+                                if (_isNextDay)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: eq.accentSoft,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      '+1 Day',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: eq.accent,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(6),
+                            const SizedBox(height: 4),
+                            Text(
+                              _endTime.format(context),
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                             ),
-                            child: const Text(
-                              '+1 Day',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.primary,
-                              ),
+                            Text(
+                              DurationFormatter.formatDateLabel(endDt),
+                              style: TextStyle(fontSize: 12, color: eq.textSecondary),
                             ),
-                          ),
-                      ],
+                          ],
+                        ),
+                      ),
                     ),
-                    subtitle: Text(
-                      '${_endTime.format(context)}\n${DurationFormatter.formatDateLabel(endDt)}',
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                    ),
-                    isThreeLine: true,
-                    onTap: () => _pickTime(isStart: false),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: Space.sm),
 
             // Overnight toggle switch
             InkWell(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(Radii.sm),
               onTap: () {
                 setState(() {
                   _userManuallyToggledNextDay = true;
@@ -632,15 +475,15 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
                           ? Icons.check_circle_rounded
                           : Icons.radio_button_unchecked,
                       size: 18,
-                      color: _isNextDay ? AppColors.primary : AppColors.textMuted,
+                      color: _isNextDay ? eq.accent : eq.textMuted,
                     ),
                     const SizedBox(width: 8),
                     Text(
                       'Spans into next day (+1 Day overnight)',
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: _isNextDay ? FontWeight.w700 : FontWeight.w500,
-                        color: _isNextDay ? AppColors.primary : AppColors.textMuted,
+                        fontWeight: _isNextDay ? FontWeight.w600 : FontWeight.w500,
+                        color: _isNextDay ? eq.accent : eq.textMuted,
                       ),
                     ),
                   ],
@@ -658,26 +501,24 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
                 });
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: Space.md),
 
             // Live Duration & Recalculated Score preview banner
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                horizontal: Space.lg,
+                vertical: Space.md,
+              ),
               decoration: BoxDecoration(
-                color: AppColors.surfaceElevated,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
+                color: eq.surface2,
+                borderRadius: BorderRadius.circular(Radii.md),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
                     children: [
-                      const Icon(
-                        Icons.timelapse,
-                        size: 18,
-                        color: AppColors.textMuted,
-                      ),
+                      Icon(Icons.timelapse, size: 18, color: eq.textMuted),
                       const SizedBox(width: 8),
                       Text(
                         'Duration: ${DurationFormatter.formatHumanReadable(durationSec)}',
@@ -685,40 +526,38 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
                       ),
                     ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: scoreColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      ScoreCalculator.formatScore(score),
-                      style: TextStyle(
-                        color: scoreColor,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
+                  ScorePill(score: score, compact: true),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: Space.md),
 
             // Session Note Field
             TextField(
               controller: _noteController,
               decoration: const InputDecoration(
                 labelText: 'Session note (optional)',
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
               ),
             ),
-            const SizedBox(height: 20),
+            if (recentNotes.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: recentNotes.take(4).map((n) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ActionChip(
+                        visualDensity: VisualDensity.compact,
+                        label: Text(n, style: const TextStyle(fontSize: 11)),
+                        onPressed: () => setState(() => _noteController.text = n),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+            const SizedBox(height: Space.lg),
 
             // Save Changes Button
             SizedBox(
@@ -726,9 +565,8 @@ class _EditEntrySheetState extends State<EditEntrySheet> {
               height: 52,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primary,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(Radii.md),
                   ),
                 ),
                 onPressed: durationSec <= 0

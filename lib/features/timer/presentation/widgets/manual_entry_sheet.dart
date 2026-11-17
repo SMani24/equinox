@@ -1,14 +1,24 @@
 import 'package:flutter/material.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_icons.dart';
+import '../../../../core/theme/eq_colors.dart';
+import '../../../../core/theme/tokens.dart';
+import '../../../../core/ui/activity_avatar.dart';
+import '../../../../core/ui/activity_chip.dart';
+import '../../../../core/ui/activity_picker_sheet.dart';
+import '../../../../core/ui/score_pill.dart';
 import '../../../../core/utils/duration_formatter.dart';
 import '../../../../core/utils/score_calculator.dart';
 import '../../../../core/utils/time_range_resolver.dart';
 import '../../../../data/database/app_database.dart';
+import '../../../smart/suggestion_engine.dart';
 import 'future_range_warning_banner.dart';
 
 class ManualEntrySheet extends StatefulWidget {
   final List<Activity> activities;
+  final List<ActivitySuggestion> suggestions;
+  final Map<String, List<String>> recentNotesByActivity;
+  final DateTime? initialStartTime;
+  final DateTime? initialEndTime;
+  final String? initialActivityId;
   final void Function({
     required String activityId,
     required DateTime startTime,
@@ -19,13 +29,14 @@ class ManualEntrySheet extends StatefulWidget {
   const ManualEntrySheet({
     super.key,
     required this.activities,
+    this.suggestions = const [],
+    this.recentNotesByActivity = const {},
+    this.initialStartTime,
+    this.initialEndTime,
+    this.initialActivityId,
     required this.onSave,
   });
 
-  /// Resolves the start date and overnight flag when start/end times change.
-  /// When [userManuallyPickedDate] is false and an overnight span (`end <= start`)
-  /// would extend into tomorrow (future) while shifting back 1 day places its
-  /// end on or before [now], anchors the session to yesterday -> today instead.
   static ({DateTime startDate, bool isNextDay}) resolveDateAndOvernight({
     required DateTime currentDate,
     required TimeOfDay startTime,
@@ -63,16 +74,26 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
   void initState() {
     super.initState();
     final now = DateTime.now();
-    // Default 1 hour prior to now
-    final startDt = now.subtract(const Duration(hours: 1));
+    final endDt = widget.initialEndTime ?? now;
+    final startDt =
+        widget.initialStartTime ?? endDt.subtract(const Duration(hours: 1));
     _date = DateTime(startDt.year, startDt.month, startDt.day);
     _startTime = TimeOfDay.fromDateTime(startDt);
-    _endTime = TimeOfDay.fromDateTime(now);
-    _isNextDay = startDt.day != now.day ||
-        startDt.month != now.month ||
-        startDt.year != now.year;
+    _endTime = TimeOfDay.fromDateTime(endDt);
+    _isNextDay = startDt.day != endDt.day ||
+        startDt.month != endDt.month ||
+        startDt.year != endDt.year;
 
-    if (widget.activities.isNotEmpty) {
+    // If explicitly prefilled on a past range (e.g. from Day Ribbon or Detail), preserve date
+    if (widget.initialStartTime != null) {
+      _userManuallyPickedDate = true;
+    }
+
+    if (widget.initialActivityId != null) {
+      _selectedActivityId = widget.initialActivityId;
+    } else if (widget.suggestions.isNotEmpty) {
+      _selectedActivityId = widget.suggestions.first.activity.id;
+    } else if (widget.activities.isNotEmpty) {
       _selectedActivityId = widget.activities.first.id;
     }
   }
@@ -100,7 +121,7 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
   }
 
   Activity? get _selectedActivity {
-    if (_selectedActivityId == null) return null;
+    if (_selectedActivityId == null || widget.activities.isEmpty) return null;
     return widget.activities.firstWhere(
       (a) => a.id == _selectedActivityId,
       orElse: () => widget.activities.first,
@@ -152,8 +173,25 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
     }
   }
 
+  void _openActivityPicker() {
+    ActivityPickerSheet.show(
+      context: context,
+      title: 'Select Activity',
+      activities: widget.activities,
+      suggestions: widget.suggestions,
+      selectedActivityId: _selectedActivityId,
+      previewDurationSeconds: _durationSeconds,
+      onSelected: (act) {
+        if (act != null) {
+          setState(() => _selectedActivityId = act.id);
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final eq = context.eq;
     final durationSec = _durationSeconds;
     final startDt = _startDateTime;
     final endDt = _endDateTime;
@@ -161,11 +199,16 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
     final score = act != null
         ? ScoreCalculator.calculateScore(durationSec, act.coefficient)
         : 0.0;
-    final scoreColor = act != null
-        ? AppColors.forCoefficient(act.coefficient)
-        : AppColors.neutral;
     final size = MediaQuery.of(context).size;
     final isLandscape = size.width > size.height || size.height < 520;
+    final quickChips = (widget.suggestions.isNotEmpty
+            ? widget.suggestions.map((s) => s.activity)
+            : widget.activities)
+        .take(4)
+        .toList();
+    final recentNotes = _selectedActivityId != null
+        ? (widget.recentNotesByActivity[_selectedActivityId] ?? const <String>[])
+        : const <String>[];
 
     return Container(
       constraints: BoxConstraints(
@@ -187,23 +230,21 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
           children: [
             Center(
               child: Container(
-                width: 40,
+                width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.border,
+                  color: eq.border,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: Space.md),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   'Manual Time Entry',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
                 IconButton(
                   icon: const Icon(Icons.close),
@@ -211,96 +252,134 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: Space.md),
 
             // Start Date Selector
-            ListTile(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: AppColors.border),
+            Material(
+              color: eq.surface2,
+              borderRadius: BorderRadius.circular(Radii.md),
+              clipBehavior: Clip.antiAlias,
+              child: ListTile(
+                leading: const Icon(Icons.calendar_today_rounded, size: 18),
+                title: const Text('Start Date'),
+                trailing: Text(
+                  DurationFormatter.formatDateLabel(_date),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                onTap: _pickDate,
               ),
-              tileColor: AppColors.surfaceElevated,
-              leading: const Icon(Icons.calendar_today, size: 20),
-              title: const Text('Start Date'),
-              trailing: Text(
-                DurationFormatter.formatDateLabel(_date),
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              onTap: _pickDate,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: Space.md),
 
             // Time range selector
             Row(
               children: [
                 Expanded(
-                  child: ListTile(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(color: AppColors.border),
-                    ),
-                    tileColor: AppColors.surfaceElevated,
-                    leading: const Icon(Icons.schedule, size: 20),
-                    title: const Text('Start', style: TextStyle(fontSize: 12)),
-                    subtitle: Text(
-                      '${_startTime.format(context)}\n${DurationFormatter.formatDateLabel(startDt)}',
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                    ),
-                    isThreeLine: true,
-                    onTap: () => _pickTime(isStart: true),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ListTile(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(
-                        color: _isNextDay ? AppColors.primary : AppColors.border,
-                      ),
-                    ),
-                    tileColor: AppColors.surfaceElevated,
-                    leading: const Icon(Icons.schedule, size: 20),
-                    title: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('End', style: TextStyle(fontSize: 12)),
-                        if (_isNextDay)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
+                  child: Material(
+                    color: eq.surface2,
+                    borderRadius: BorderRadius.circular(Radii.md),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => _pickTime(isStart: true),
+                      child: Padding(
+                        padding: const EdgeInsets.all(Space.md),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Start',
+                              style: TextStyle(fontSize: 12, color: eq.textMuted),
                             ),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text(
-                              '+1 Day',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.primary,
+                            const SizedBox(height: 4),
+                            Text(
+                              _startTime.format(context),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
                               ),
                             ),
-                          ),
-                      ],
+                            Text(
+                              DurationFormatter.formatDateLabel(startDt),
+                              style: TextStyle(fontSize: 12, color: eq.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    subtitle: Text(
-                      '${_endTime.format(context)}\n${DurationFormatter.formatDateLabel(endDt)}',
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(width: Space.md),
+                Expanded(
+                  child: Material(
+                    color: eq.surface2,
+                    borderRadius: BorderRadius.circular(Radii.md),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => _pickTime(isStart: false),
+                      child: Container(
+                        padding: const EdgeInsets.all(Space.md),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(Radii.md),
+                          border: _isNextDay
+                              ? Border.all(color: eq.accent.withValues(alpha: 0.6))
+                              : null,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'End',
+                                  style: TextStyle(fontSize: 12, color: eq.textMuted),
+                                ),
+                                if (_isNextDay)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: eq.accentSoft,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      '+1 Day',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: eq.accent,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _endTime.format(context),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Text(
+                              DurationFormatter.formatDateLabel(endDt),
+                              style: TextStyle(fontSize: 12, color: eq.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    isThreeLine: true,
-                    onTap: () => _pickTime(isStart: false),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: Space.sm),
 
-            // Overnight toggle switch
+            // Overnight toggle
             InkWell(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(Radii.sm),
               onTap: () {
                 setState(() {
                   _userManuallyToggledNextDay = true;
@@ -317,15 +396,15 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
                           ? Icons.check_circle_rounded
                           : Icons.radio_button_unchecked,
                       size: 18,
-                      color: _isNextDay ? AppColors.primary : AppColors.textMuted,
+                      color: _isNextDay ? eq.accent : eq.textMuted,
                     ),
                     const SizedBox(width: 8),
                     Text(
                       'Spans into next day (+1 Day overnight)',
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: _isNextDay ? FontWeight.w700 : FontWeight.w500,
-                        color: _isNextDay ? AppColors.primary : AppColors.textMuted,
+                        fontWeight: _isNextDay ? FontWeight.w600 : FontWeight.w500,
+                        color: _isNextDay ? eq.accent : eq.textMuted,
                       ),
                     ),
                   ],
@@ -343,26 +422,24 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
                 });
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: Space.md),
 
             // Duration & Score preview banner
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                horizontal: Space.lg,
+                vertical: Space.md,
+              ),
               decoration: BoxDecoration(
-                color: AppColors.surfaceElevated,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
+                color: eq.surface2,
+                borderRadius: BorderRadius.circular(Radii.md),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
                     children: [
-                      const Icon(
-                        Icons.timelapse,
-                        size: 18,
-                        color: AppColors.textMuted,
-                      ),
+                      Icon(Icons.timelapse_rounded, size: 18, color: eq.textMuted),
                       const SizedBox(width: 8),
                       Text(
                         'Duration: ${DurationFormatter.formatHumanReadable(durationSec)}',
@@ -370,85 +447,121 @@ class _ManualEntrySheetState extends State<ManualEntrySheet> {
                       ),
                     ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: scoreColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      ScoreCalculator.formatScore(score),
-                      style: TextStyle(
-                        color: scoreColor,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
+                  ScorePill(score: score, compact: true),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: Space.md),
 
-            // Activity Dropdown
-            DropdownButtonFormField<String>(
-              initialValue: _selectedActivityId,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Activity',
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
+            // Selected Activity card (opens unified picker)
+            if (act != null)
+              Material(
+                color: Color(act.colorHex).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(Radii.md),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: _openActivityPicker,
+                  child: Container(
+                    padding: const EdgeInsets.all(Space.md),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(Radii.md),
+                      border: Border.all(
+                        color: Color(act.colorHex).withValues(alpha: 0.45),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        ActivityAvatar(
+                          iconCode: act.iconCode,
+                          colorHex: act.colorHex,
+                          size: 40,
+                          iconSize: 20,
+                        ),
+                        const SizedBox(width: Space.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                act.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15,
+                                ),
+                              ),
+                              Text(
+                                ScoreCalculator.formatCoefficient(act.coefficient),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: eq.forCategory(act.category),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          'Change',
+                          style: TextStyle(
+                            color: eq.accent,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.chevron_right_rounded, color: eq.accent, size: 18),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-              items: widget.activities.map((act) {
-                return DropdownMenuItem<String>(
-                  value: act.id,
-                  child: Row(
-                    children: [
-                      Icon(
-                        AppIcons.getIconData(act.iconCode),
-                        color: Color(act.colorHex),
-                        size: 20,
+            if (quickChips.length > 1) ...[
+              const SizedBox(height: Space.sm),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: quickChips.map((q) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: Space.sm),
+                      child: ActivityChip(
+                        activity: q,
+                        selected: q.id == _selectedActivityId,
+                        onTap: () => setState(() => _selectedActivityId = q.id),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(child: Text(act.name)),
-                      Text(
-                        ScoreCalculator.formatCoefficient(act.coefficient),
-                        style: TextStyle(
-                          color: AppColors.forCoefficient(act.coefficient),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-              onChanged: (val) {
-                setState(() {
-                  _selectedActivityId = val;
-                });
-              },
-            ),
-            const SizedBox(height: 12),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+            const SizedBox(height: Space.md),
 
-            // Note Field
+            // Note Field + Recent Note Suggestions
             TextField(
               controller: _noteController,
               decoration: const InputDecoration(
                 labelText: 'Session note (optional)',
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
               ),
             ),
-            const SizedBox(height: 20),
+            if (recentNotes.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: recentNotes.take(4).map((n) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ActionChip(
+                        visualDensity: VisualDensity.compact,
+                        label: Text(n, style: const TextStyle(fontSize: 11)),
+                        onPressed: () => setState(() => _noteController.text = n),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+            const SizedBox(height: Space.lg),
 
-            // Save Button
             SizedBox(
               width: double.infinity,
               height: 50,

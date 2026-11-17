@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/theme/eq_colors.dart';
 import '../../../../core/utils/duration_formatter.dart';
 import '../../../../core/utils/time_range_resolver.dart';
 
@@ -33,29 +34,29 @@ class FutureRangeWarningBanner extends StatelessWidget {
     );
     final canShiftBack = !TimeRangeResolver.isInFuture(shiftedBackEnd, now);
 
+    final eq = context.eq;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.amber.withValues(alpha: 0.12),
+          color: eq.dangerSoft,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.amber.withValues(alpha: 0.45)),
         ),
         child: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.warning_amber_rounded,
               size: 18,
-              color: Colors.amber,
+              color: eq.danger,
             ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 'Ends in the future (${DurationFormatter.formatDateLabel(endDateTime)}, ${endTime.format(context)})',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
-                  color: Colors.amber,
+                  color: eq.danger,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -64,12 +65,12 @@ class FutureRangeWarningBanner extends StatelessWidget {
               TextButton(
                 style: TextButton.styleFrom(
                   visualDensity: VisualDensity.compact,
-                  foregroundColor: Colors.amber,
+                  foregroundColor: eq.danger,
                 ),
                 onPressed: onShiftBackOneDay,
                 child: const Text(
                   'Shift -1d',
-                  style: TextStyle(fontWeight: FontWeight.w800),
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
           ],

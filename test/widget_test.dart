@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('EquinoxApp renders navigation tabs and timer dial',
+  testWidgets('EquinoxApp renders navigation tabs and timer ring',
       (WidgetTester tester) async {
     final testDb = AppDatabase(NativeDatabase.memory());
 
@@ -22,19 +22,19 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify Tab labels exist in navigation bar
-    expect(find.text('Timer'), findsOneWidget);
-    expect(find.text('Analytics'), findsOneWidget);
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Insights'), findsOneWidget);
     expect(find.text('Activities'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
 
     // Verify Start Timer button exists on initial launch
-    expect(find.text('START TIMER'), findsOneWidget);
-    expect(find.text("TODAY'S EQUILIBRIUM"), findsOneWidget);
+    expect(find.text('Start Timer'), findsOneWidget);
+    expect(find.text('Timeline'), findsOneWidget);
 
     await testDb.close();
   });
 
-  testWidgets('Back button on secondary tabs navigates back to Timer; on Timer exits',
+  testWidgets('Back button on secondary tabs navigates back to Today; on Today exits',
       (WidgetTester tester) async {
     final testDb = AppDatabase(NativeDatabase.memory());
 
@@ -49,11 +49,11 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    // 1. Initial tab is Timer
-    expect(find.text('START TIMER'), findsOneWidget);
+    // 1. Initial tab is Today
+    expect(find.text('Start Timer'), findsOneWidget);
 
-    // 2. Switch to Analytics tab
-    await tester.tap(find.text('Analytics'));
+    // 2. Switch to Insights tab
+    await tester.tap(find.text('Insights'));
     await tester.pumpAndSettle();
 
     // 3. Press system back button
@@ -61,8 +61,8 @@ void main() {
     expect(popHandled, isTrue); // Intercepted by PopScope
     await tester.pumpAndSettle();
 
-    // Should return to Timer screen
-    expect(find.text('START TIMER'), findsOneWidget);
+    // Should return to Today screen
+    expect(find.text('Start Timer'), findsOneWidget);
 
     // 4. Switch to Activities tab
     await tester.tap(find.text('Activities'));
@@ -73,12 +73,12 @@ void main() {
     expect(popHandled2, isTrue);
     await tester.pumpAndSettle();
 
-    // Returns to Timer screen
-    expect(find.text('START TIMER'), findsOneWidget);
+    // Returns to Today screen
+    expect(find.text('Start Timer'), findsOneWidget);
 
-    // 5. When already on Timer tab, back button allows pop to quit app
+    // 5. When already on Today tab, back button allows pop to quit app
     final popHandledOnTimer = await tester.binding.handlePopRoute();
-    expect(popHandledOnTimer, isFalse); // Not blocked, allows exiting app
+    expect(popHandledOnTimer, isFalse);
 
     await testDb.close();
   });

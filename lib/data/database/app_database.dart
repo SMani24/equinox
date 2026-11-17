@@ -15,15 +15,30 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
+          await _createIndexes();
           await _seedInitialData();
         },
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await _createIndexes();
+          }
+        },
       );
+
+  Future<void> _createIndexes() async {
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_time_entries_start_time ON time_entries(start_time)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_time_entries_end_time ON time_entries(end_time)',
+    );
+  }
 
   Future<void> _seedInitialData() async {
     final now = DateTime.now().millisecondsSinceEpoch;
